@@ -1,0 +1,56 @@
+CONFIG_BT_ENABLED=n
+CONFIG_ESP_SYSTEM_EVENT_QUEUE_SIZE=32
+
+CONFIG_MBEDTLS_HAVE_TIME_SUPPORT=y
+CONFIG_ESP_TLS_USING_CRT_BUNDLE=y
+CONFIG_ESP_TLS_DEFAULT_CRT_BUNDLE_DEFAULT=y
+
+
+CONFIG_ESP_TLS_INSECURE=y
+CONFIG_ESP_TLS_SKIP_SERVER_CERT_VERIFY=y
+
+
+# === НАСТРОЙКИ ВНЕШНЕЙ ПАМЯТИ OCTAL PSRAM ===
+CONFIG_SPIRAM_TYPE_ESP_PSRAM64=y
+CONFIG_SPIRAM_VPCK_V_3_3=y
+
+# Увеличиваем стек главной задачи main до 64 КБ (было 8 КБ)
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=65536
+
+# 🔥 КРИТИЧЕСКИЕ ИСПРАВЛЕНИЯ: Разрешаем аллокатору выделять память в PSRAM
+# Без этих трех строк heap_caps_malloc(MALLOC_CAP_SPIRAM) возвращает NULL,
+# вызывая ошибку "no mem for frame buffer" драйвера esp_lcd!
+CONFIG_SPIRAM_USE_MALLOC=y
+CONFIG_SPIRAM_USE_CAPS_ALLOC=y
+CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY=y
+
+# Максимальная скорость процессора
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+
+# Отключение сторожевых таймеров на время теста
+CONFIG_ESP_TASK_WDT_EN=n
+CONFIG_INT_WDT=n
+CONFIG_APP_WDT_EN=n
+
+# Разрешаем сборку тяжелых отладочных бинарников приложения
+CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
+CONFIG_MMU_PAGE_SIZE_64KB=y
+
+
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_TYPE_AUTO=y
+CONFIG_SPIRAM_SIZE=8388608
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_120M=y
+CONFIG_SPIRAM_BOOT_INIT=y
+CONFIG_SPIRAM_MEMTEST=n
+
+# Переключаем стандартную таблицу на фабричную с двумя OTA-слотами
+#CONFIG_PARTITION_TABLE_TWO_OTA=y
+
+# Обязательно указываем размер флэш-памяти вашей платы (обычно 4МБ для ESP32)
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+
+
+# Увеличиваем стек для системных фоновых задач (Wi-Fi, NTP)
+CONFIG_SYSTEM_EVENT_TASK_STACK_SIZE=16384

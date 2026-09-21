@@ -1,0 +1,274 @@
+import { VerticalBox, HorizontalBox } from "std-widgets.slint";
+export struct WeatherFact{
+    //Время суток на метеостанции: "d" — день, "n" — ночь.
+    daytime: string,
+    //Текущее время года
+    season:string,
+
+    //Фактическая температура воздуха прямо сейчас
+    temp: string,
+    //Ощущаемая температура воздуха с учетом влажности и ветра
+    feels_like: string,
+
+    //Текстовый код состояния погоды
+    condition: string,
+    //Текстовый код состояния иконки
+    status: string,
+
+    //Код иконки
+    icon: string,
+    //Степень облачности в долях единицы (*100%)
+    cloudness: string,
+    //Тип осадков: 0 — без осадков, 1 — дождь, 2 — дождь со снегом, 3 — снег, 4 — град.
+    prec_type: string,
+    //Вероятность выпадения осадков в процентах (0%)
+    prec_prob: string,
+    //Есть ли гроза прямо сейчас (Нет
+    is_thunder: string,
+
+    //Направление ветра строкой (Юго-Западный).
+    wind_dir: string,
+    //Скорость порывов ветра (6.7 м/с).
+    wind_gust: string,
+    //Скорость ветра в метрах в секунду (3.1 м/с).
+    wind_speed: string,
+
+    // Атмосферное давление в мм ртутного столба (762 мм рт. ст.). Самый привычный нам формат.
+    pressure_mm: string,
+    //Атмосферное давление в гектопаскалях (1015 гПа).
+    pressure_pa: string,
+    //Относительная влажность воздуха в процентах (88%).
+    humidity: string,
+}
+
+export component YandexWeatherFact inherits Rectangle{
+    private property <brush> background_color_sunny: #D97724;
+    private property <brush> background_color_cloudy: #1E1F24;
+    private property <brush> background_color_rain: #0F172A;
+    private property <brush> background_color_snow: #111C24;
+    private property <brush> background_default: #0F121A;
+    in property <length> popup_x;
+    in property <length> popup_y;
+    in-out property <WeatherFact> weather;
+    in-out property <string> weather_status: "offline";
+    border-radius: 8px;
+    border-width: 2px;
+    border-color: weather_status == "online" ?
+        (
+            root.weather.status == "clear" ? background_color_sunny.brighter(0.25) : // 1. Солнечно
+            (root.weather.status == "partly-cloudy" ||
+                root.weather.status == "cloudy" ||
+                root.weather.status == "overcast") ? background_color_cloudy.brighter(0.25) : // 2. Облачно
+            (root.weather.status == "light-rain" ||
+                root.weather.status == "rain" ||
+                root.weather.status == "heavy-rain" ||
+                root.weather.status == "showers" ||
+                root.weather.status == "thunderstorm" ||
+                root.weather.status == "thunderstorm-with-rain" ||
+                root.weather.status == "hail" ||
+                root.weather.status == "thunderstorm-with-hail"
+            ) ? background_color_rain.brighter(0.25) : // 3. Дождь/Гроза
+            background_color_snow.brighter(0.25)
+        ) : background_default.brighter(0.25);
+    background:weather_status == "online" ?
+        (
+            root.weather.status == "clear" ? background_color_sunny : // 1. Солнечно
+            (root.weather.status == "partly-cloudy" ||
+                root.weather.status == "cloudy" ||
+                root.weather.status == "overcast") ? background_color_cloudy : // 2. Облачно
+            (root.weather.status == "light-rain" ||
+                root.weather.status == "rain" ||
+                root.weather.status == "heavy-rain" ||
+                root.weather.status == "showers" ||
+                root.weather.status == "thunderstorm" ||
+                root.weather.status == "thunderstorm-with-rain" ||
+                root.weather.status == "hail" ||
+                root.weather.status == "thunderstorm-with-hail") ? background_color_rain : // 3. Дождь/Гроза
+            background_color_snow
+        ) : background_default;
+    my_popup := PopupWindow {
+        x: (-popup_x + self.width)/2;
+        y: (popup_y - self.height)/2;
+        Rectangle {
+            border-radius: 8px;
+            border-width: 2px;
+            border-color: darkcyan;
+            background: weather_status == "online" ?
+                    (
+                        root.weather.status == "clear" ? background_color_sunny : // 1. Солнечно
+                        (root.weather.status == "partly-cloudy" ||
+                            root.weather.status == "cloudy" ||
+                            root.weather.status == "overcast") ? background_color_cloudy : // 2. Облачно
+                        (root.weather.status == "light-rain" ||
+                            root.weather.status == "rain" ||
+                            root.weather.status == "heavy-rain" ||
+                            root.weather.status == "showers" ||
+                            root.weather.status == "thunderstorm" ||
+                            root.weather.status == "thunderstorm-with-rain" ||
+                            root.weather.status == "hail" ||
+                            root.weather.status == "thunderstorm-with-hail") ? background_color_rain : // 3. Дождь/Гроза
+                        background_color_snow
+                    ) : background_default;
+            VerticalLayout {
+                padding: 15px;
+                spacing: 10px;
+                alignment: center;
+                Text {
+                    text: "Детальная информация";
+                    color: white;
+                    font-size: 16px;
+                    horizontal-alignment: center;
+                }
+                //Общая информаци
+                Text {
+                    text:
+                        "Состояние: " + root.weather.condition + "\n" +
+                        "Температура: " + root.weather.temp + " (" + root.weather.feels-like + ")\n" +
+                        "Влажность: " + root.weather.humidity + "\n" +
+                        "Давление: " + root.weather.pressure-mm + "мм.рс. (" + root.weather.pressure-pa + " гПа)\n";
+                    color: white;
+                    font-size: 14px;
+                    horizontal-alignment: start;
+                }
+                //Облачность
+                Text {
+                    text:
+                        "Облачность: " + root.weather.cloudness + "\n" +
+                        "Вероятность осадков: " + root.weather.prec-type + " ("+ root.weather.prec-prob + ")\n" +
+                        "Гроза: " + root.weather.is_thunder;
+                    color: white;
+                    font-size: 14px;
+                    horizontal-alignment: start;
+                }
+                //Ветер
+                Text {
+                    text:
+                        "Скорость: " + root.weather.wind_speed + " м/с\n" +
+                        "Порывы до: " + root.weather.wind_gust + " м/с\n" +
+                        "Направление: " + root.weather.wind_dir;
+                    color: white;
+                    font-size: 14px;
+                    horizontal-alignment: start;
+                }
+            }
+        }
+    }
+    Text {
+        x:parent.width - self.width;
+        y:parent.height - self.height;
+        font-size: 90px;
+        opacity: 0.15;
+        text:
+            root.weather.status == "clear" ? "☀️" :
+            root.weather.status == "partly-cloudy" ||
+            root.weather.status == "cloudy" ? "⛅" :
+            root.weather.status == "overcast" ? "☁️" :
+            root.weather.status == "light-rain" || root.weather.status == "rain" ? "🌧️" :
+            root.weather.status == "thunderstorm-with-hail" ||
+            root.weather.status == "thunderstorm-with-rain" ||
+            root.weather.status == "heavy-rain"  ? "⛈️" :
+            root.weather.status == "showers" ? "🌊" :
+            root.weather.status == "light-snow" ||
+            root.weather.status == "snow" ? "❄️" :
+            root.weather.status == "snow-showers" ? "☃️" :
+            root.weather.status == "hail" ? "🪨" :
+            root.weather.status == "thunderstorm" ? "⚡" :
+            "🌙";
+        color:
+            root.weather.status == "sunny" ? background_color_sunny : // 1. Солнечно
+            (root.weather.status == "partly-cloudy" ||
+                root.weather.status == "cloudy" ||
+                root.weather.status == "overcast") ? background_color_cloudy.darker(0.4) : // 2. Облачно
+            (root.weather.status == "light-rain" ||
+                root.weather.status == "rain" ||
+                root.weather.status == "heavy-rain" ||
+                root.weather.status == "showers" ||
+                root.weather.status == "thunderstorm" ||
+                root.weather.status == "thunderstorm-with-rain" ||
+                root.weather.status == "thunderstorm-with-hail") ? background_color_rain.darker(0.4) : // 3. Дождь/Гроза
+            background_color_snow.darker(0.4);
+        }
+    touch_wind := TouchArea {
+        clicked => { my_popup.show(); }
+    }
+    VerticalLayout {
+        padding: 10px;
+        spacing: 10px;
+        Text {
+            color: white;
+            horizontal-alignment: center;
+            text: "Сейчас";
+            font-size: 24px;
+        }
+        Rectangle {
+            border-radius: 8px;
+            background: black.with-alpha(0.2);
+            vertical-stretch: 1;
+            Text {
+                visible: weather_status == "offline" ? true:false;
+                font-size: 50px;
+                color:white;
+                width: 50%;
+                height: 50%;
+                text: "🔌";
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            VerticalLayout {
+                visible: weather_status == "online"? true:false;
+                spacing:10px;
+                padding: 10px;
+                Text {
+                    horizontal-alignment: center;
+                    color: white;
+                    text: weather.condition +
+                    (
+                        root.weather.status == "clear" ? " ☀️" :
+                        root.weather.status == "partly-cloudy" ||
+                        root.weather.status == "cloudy" ? " ⛅" :
+                        root.weather.status == "overcast" ? " ☁️" :
+                        root.weather.status == "light-rain" || root.weather.status == "rain" ? " 🌧️" :
+                        root.weather.status == "thunderstorm-with-hail" ||
+                        root.weather.status == "thunderstorm-with-rain" ||
+                        root.weather.status == "heavy-rain"  ? " ⛈️" :
+                        root.weather.status == "showers" ? " 🌊" :
+                        root.weather.status == "light-snow" ||
+                        root.weather.status == "snow" ? " ❄️" :
+                        root.weather.status == "snow-showers" ? " ☃️" :
+                        root.weather.status == "hail" ? " 🪨" :
+                        root.weather.status == "thunderstorm" ? " ⚡" :
+                        ""
+                    );
+                    font-size: 16px;
+                }
+                Text {
+                    horizontal-alignment: center;
+                    color: white;
+                    text: "🌡️ " + weather.temp + " °C (" + weather.feels-like + " °C)";
+                    font-size: 16px;
+                }
+                Text {
+                    horizontal-alignment: center;
+                    color: white;
+                    text: "Влажность 💧 " + weather.humidity + " %";
+                    font-size: 16px;
+                }
+                Text {
+                    horizontal-alignment: center;
+                    color: white;
+                    text:
+                        weather.prec-type == "Без осадков" ?
+                        weather.prec-type : weather.prec-type + " ("+ weather.prec-prob + " %)";
+                    font-size: 16px;
+                }
+                Text {
+                    color: white;
+                    horizontal-alignment: center;
+                    text: "Ветер 💨 " + weather.wind-speed + " м/с";
+                    font-size: 16px;
+                }
+                Rectangle {}
+            }
+        }
+    }
+}
