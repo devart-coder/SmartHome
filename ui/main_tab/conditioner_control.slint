@@ -1,0 +1,104 @@
+import { Slider } from "std-widgets.slint";
+export component ConditionerControll inherits Rectangle {
+    in-out property <bool> is_on:false ;
+    in-out property <int> current_mode:-1;
+    in-out property <int> conditioner_value:25;
+    in-out property <brush> widget_background_color;
+
+    border-radius: 8px;
+    background: widget_background_color;
+    border-color: widget_background_color.brighter(0.25);
+    height: 50%;
+    VerticalLayout {
+        padding-bottom: 10px;
+        HorizontalLayout {
+            TouchArea{
+                clicked => { is_on = !is_on; current_mode=-1; }
+                HorizontalLayout {
+                    alignment: start;
+                    padding: 10px;
+                    Rectangle {
+                        width: 50px;
+                        height: 50px;
+                        border-color: is_on ? green : widget_background_color.brighter(0.5);
+                        background: widget_background_color;
+                        border-width: 2px;
+                        border-radius: 8px;
+                        animate background { duration: 250ms; }
+                        Text {
+                            text: "⏻";
+                            font-size: 24px;
+                            color: is_on ? green : widget_background_color.brighter(0.5);
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+            HorizontalLayout {
+                spacing: 10px;
+                padding: 10px;
+                alignment: center;
+                for array[index] in ["❄️", "☀️", "💧", "🌀"] : Rectangle{
+                    width: 50px;
+                    height: 50px;
+                    TouchArea {
+                        clicked => {
+                            current_mode = index;
+                        }
+                    }
+                    border-color: is_on ?
+                        (
+                            current_mode == index ?
+                            (
+                                current_mode == 0 ? steelblue :
+                                current_mode == 1 ? orange :
+                                current_mode == 2 ? blueviolet :
+                                darkcyan
+                            ) : widget_background_color.brighter(0.5)
+                        ) :
+                        widget_background_color.brighter(0.5);
+                    background: widget_background_color;
+                    border-width: 2px;
+                    border-radius: 8px;
+                    Text {
+                        text: array;
+                        color: is_on ?
+                            (
+                                index == 0 ? steelblue :
+                                index == 1 ? orange :
+                                index == 2 ? blueviolet :
+                                darkcyan
+                            ) :
+                            widget_background_color.brighter(0.5);
+                        font-size: 24px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+                Rectangle {
+                    width:60px;
+                }
+            }
+        }
+        Text {
+            visible: is_on ? true:false;
+            text: conditioner_value.to-string-unlocalized() + " °C";
+            color:lightskyblue;
+            horizontal-alignment: center;
+            font-size: 16px;
+        }
+        Slider {
+            visible: is_on ? true:false;
+            vertical-stretch: 10;
+            enabled: true;
+            minimum: 16.0;
+            maximum: 30.0;
+            step: 1;
+            value: conditioner_value;
+            changed(new_value) => {
+                conditioner_value = Math.round(new_value);
+            }
+        }
+    }
+}

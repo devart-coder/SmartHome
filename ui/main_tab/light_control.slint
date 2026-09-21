@@ -1,0 +1,57 @@
+import { StandardButton } from "std-widgets.slint";
+export component LightControll inherits Rectangle{
+    border-radius: 8px;
+    border-width: 2px;
+    in property <brush> text_color:white;
+    in-out property <brush> widget_background;
+    background: widget_background;
+    border-color: self.background.brighter(0.25);
+    GridLayout {
+        padding: 10px;
+        spacing: 10px;
+        Row {
+            for room[index] in ["Кухня","Прихожая","Зал","Кладовая"] : room_rect_1:= Rectangle{
+                property <bool> is_selected: false;
+                border-radius: 8px;
+                border-width: 2px;
+                background: widget_background.brighter(0.25);
+                border-color: is_selected ? darkcyan : self.background.brighter(0.25);
+                TouchArea {
+                    clicked => {
+                        room-rect_1.is_selected = !room-rect_1.is_selected;
+                    }
+                }
+                Text {
+                    text: room;
+                    color: text_color;
+                    horizontal-alignment: center;
+                    font-size: 16px;
+                    vertical-alignment: top;
+                }
+                Rectangle {vertical-stretch: 1;}
+            }
+        }
+        Row {
+            for room[index] in ["ЦУ","Уборная","Ванная","Покои"] : room_rect_2:= Rectangle{
+                property <bool> is_selected: false;
+                border-radius: 8px;
+                border-width: 2px;
+                background: widget_background.brighter(0.25);
+                border-color: is_selected ? darkcyan : self.background.brighter(0.25);
+                TouchArea {
+                    clicked => {
+                        room-rect_2.is_selected = !room-rect_2.is_selected;
+                    }
+                }
+                Text {
+                    text: room;
+                    color: text_color;
+                    horizontal-alignment: center;
+                    font-size: 16px;
+                    vertical-alignment: top;
+                }
+                Rectangle {vertical-stretch: 1;}
+            }
+        }
+    }
+}
