@@ -1,7 +1,3 @@
-use std::cell::RefCell;
-use std::rc::Rc;
-use std::time::Duration;
-
 use bmp180_driver::BMP180;
 use chrono::Local;
 use esp_idf_hal::delay::{Delay, FreeRtos};
@@ -9,19 +5,151 @@ use esp_idf_hal::i2c::{I2cConfig, I2cDriver};
 use esp_idf_hal::peripherals::Peripherals;
 use esp_idf_hal::units::Hertz;
 use esp_idf_svc::http::client::{Configuration, EspHttpConnection};
+use esp_idf_svc::ota::EspOta;
 use esp_idf_svc::sntp::{EspSntp, SyncStatus};
 use esp_idf_svc::wifi::AuthMethod;
 use lcd_touch_display::display::Display;
 use lcd_touch_display::wifi::Wifi;
 use lcd_touch_display::yandex_weather::YandexWeatherFact;
 use slint::platform::update_timers_and_animations;
-use slint::{
-    ComponentHandle, SharedString,
-};
+use slint::{ComponentHandle, SharedString};
+use std::cell::RefCell;
+use std::net::{TcpListener, TcpStream};
+use std::rc::Rc;
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::Duration;
 
 use crate::ui::{MainWindow, WeatherFact};
+use esp_idf_svc::http::Headers;
+use std::io::{Read, Write};
 mod ui {
     slint::include_modules!();
+}
+use mqttrs::{Connack, Connect, ConnectReturnCode, Packet, Pid, QoS};
+
+fn handle_client(mut stream: TcpStream) -> std::io::Result<()> {
+    // Выделяем буфер под входящие данные.
+    // Для экономии памяти на ESP32 1024 байт под пакет — более чем достаточно.
+    let mut buffer = vec![0u8; 1024];
+    let client_addr = stream.peer_addr()?;
+    log::info!("Новый клиент подключился к ESP32: {:?}", client_addr);
+
+    stream.set_read_timeout(Some(Duration::from_secs(30)))?;
+
+    loop {
+        match stream.read(&mut buffer) {
+            Ok(0) => {
+                println!("Клиент {:?} закрыл соединение.", client_addr);
+                break;
+            }
+            Ok(bytes_read) => {
+                // Берем срез буфера с реально прочитанными байтами
+                let mut data_slice = &buffer[..bytes_read];
+
+                // Декодируем пакет с помощью mqttrs::decode_slice
+                match mqttrs::decode_slice(&mut data_slice) {
+                    Ok(Some(Packet::Connect(connect_packet))) => {
+                        println!("MQTT CONNECT от: {}", connect_packet.client_id);
+
+                        // Формируем ответ подтверждения (CONNACK)
+                        let connack = Packet::Connack(Connack {
+                            session_present: false,
+                            code: ConnectReturnCode::Accepted,
+                        });
+
+                        // Кодируем пакет в байты
+                        let mut out_buf = [0u8; 128];
+                        if let Ok(len) = mqttrs::encode_slice(&connack, &mut out_buf) {
+                            stream.write_all(&out_buf[..len])?;
+                            stream.flush()?;
+                            println!("Клиент успешно авторизован!");
+                        }
+                    }
+                    Ok(Some(Packet::Publish(pub_packet))) => {
+                        let payload = String::from_utf8_lossy(&pub_packet.payload);
+                        println!("Получен топик [{}]: {}", pub_packet.topic_name, payload);
+
+                        // В mqttrs QoS и Packet ID объединены в поле qospid
+                        match pub_packet.qospid {
+                            mqttrs::QosPid::AtLeastOnce(pid) => {
+                                // Если QoS = AtLeastOnce (QoS 1), мы ОБЯЗАНЫ отправить PUBACK с этим же pid
+                                let puback = Packet::Puback(pid);
+                                let mut out_buf = [0u8; 64];
+
+                                if let Ok(len) = mqttrs::encode_slice(&puback, &mut out_buf) {
+                                    stream.write_all(&out_buf[..len])?;
+                                    stream.flush()?;
+                                    println!("Отправлен PUBACK для пакета ID: {:?}", pid);
+                                }
+                            }
+                            mqttrs::QosPid::ExactlyOnce(pid) => {
+                                println!("Запрошен QoS 2 (ExactlyOnce) для пакета ID: {:?}", pid);
+                            }
+                            mqttrs::QosPid::AtMostOnce => {
+                                println!("Сообщение доставлено с QoS 0 (AtMostOnce)");
+                            }
+                        }
+                    }
+
+                    Ok(Some(Packet::Subscribe(sub_packet))) => {
+                        println!(
+                            "Клиент запросил подписку на топики: {:?}",
+                            sub_packet.topics
+                        );
+
+                        // Формируем коды возврата для каждого топика
+                        let mut return_codes = Vec::new();
+                        for _ in &sub_packet.topics {
+                            // ИСПРАВЛЕНО: передаем успешный статус с уровнем QoS 0 (AtMostOnce)
+                            return_codes
+                                .push(mqttrs::SubscribeReturnCodes::Success(QoS::AtMostOnce));
+                        }
+
+                        // Создаем пакет SUBACK
+                        let suback = Packet::Suback(mqttrs::Suback {
+                            pid: sub_packet.pid,
+                            return_codes,
+                        });
+
+                        let mut out_buf = [0u8; 128];
+                        if let Ok(len) = mqttrs::encode_slice(&suback, &mut out_buf) {
+                            stream.write_all(&out_buf[..len])?;
+                            stream.flush()?;
+                            println!("Отправлен SUBACK для подписок клиента.");
+                        }
+                    }
+
+                    Ok(Some(Packet::Pingreq)) => {
+                        // Ответ на Keep-Alive проверку от клиента (PINGRESP)
+                        let pingresp = Packet::Pingresp;
+                        let mut out_buf = [0u8; 16];
+                        if let Ok(len) = mqttrs::encode_slice(&pingresp, &mut out_buf) {
+                            stream.write_all(&out_buf[..len])?;
+                            stream.flush()?;
+                        }
+                    }
+                    Ok(Some(other)) => {
+                        println!("Получен пакет типа: {:?}", other);
+                    }
+                    Ok(None) => {
+                        // Пакет пришел не полностью, ждем оставшиеся байты в следующем цикле read
+                        continue;
+                    }
+                    Err(e) => {
+                        println!("Ошибка протокола MQTT: {:?}", e);
+                        break;
+                    }
+                }
+            }
+            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => continue,
+            Err(e) => {
+                println!("Ошибка сокета клиента {:?}: {:?}", client_addr, e);
+                break;
+            }
+        }
+    }
+    Ok(())
 }
 fn main() {
     esp_idf_sys::link_patches();
@@ -45,9 +173,10 @@ fn main() {
     //SlintMainWindowDraw
     let main_window = MainWindow::new().unwrap();
     main_window.show().unwrap();
+    main_window.set_is_loading(true);
     display.update();
     FreeRtos::delay_ms(100);
-    macro_rules! log_to_lcd {
+    macro_rules! log_to_lcdln {
         ($msg:expr) => {
             println!("{}", $msg);
             let mut local_str = main_window.get_boot_logs();
@@ -59,9 +188,20 @@ fn main() {
             FreeRtos::delay_ms(100);
         };
     }
+    macro_rules! log_to_lcd {
+        ($msg:expr) => {
+            println!("{}", $msg);
+            let mut local_str = main_window.get_boot_logs();
+            local_str.push_str($msg);
+            main_window.set_boot_logs(local_str);
+            update_timers_and_animations();
+            display.update();
+            FreeRtos::delay_ms(100);
+        };
+    }
     //-------------------------------------------------//
     //---------------------_WIFI_----------------------//
-    log_to_lcd!("Инициализация Wi-Fi...");
+    log_to_lcdln!("Инициализация Wi-Fi...");
     let mut wifi = Wifi::new(p.modem);
     wifi.init_config(|b| {
         b.set_ssid("TP-Link_D88D".to_string())
@@ -69,23 +209,52 @@ fn main() {
             .set_auth_method(AuthMethod::WPA2Personal)
     });
     wifi.show_connection(|w| {
-        log_to_lcd!("Подключение к Wi-Fi...");
-        w.start().unwrap();
+        log_to_lcd!("Подключение к Wi-Fi... ");
+        match w.start() {
+            Ok(_) => {
+                log_to_lcdln!("✅");
+            }
+            Err(err) => {
+                log_to_lcdln!(format!("Error {}", err).as_str());
+            }
+        };
 
-        log_to_lcd!("Поиск сети...");
-        w.connect().unwrap();
-
-        log_to_lcd!("Сеть найдена! Получение IP-адреса (DHCP)...");
-        w.wait_netif_up().unwrap();
-
-        log_to_lcd!("Wi-Fi успешно подключен!");
-        main_window.set_global_wifi_status("online".into());
+        log_to_lcd!("Поиск сети... ");
+        match w.connect() {
+            Ok(_) => {
+                log_to_lcdln!("✅");
+                log_to_lcd!("Получение IP-адреса (DHCP)...");
+                match w.wait_netif_up() {
+                    Ok(_) => {
+                        if let Ok(ip_info) = w.wifi().sta_netif().get_ip_info() {
+                            log_to_lcdln!(format!("✅ Ip: {:?}", ip_info.ip).as_str());
+                        } else {
+                            log_to_lcdln!("✅ (No IP)");
+                        }
+                    }
+                    Err(err) => {
+                        log_to_lcdln!(format!("Error {}", err).as_str());
+                    }
+                };
+            }
+            Err(err) => {
+                log_to_lcdln!(format!("Error {}", err).as_str());
+            }
+        };
+        log_to_lcdln!("Wi-Fi успешно подключен!");
     });
+    unsafe {
+        esp_idf_sys::esp_wifi_set_ps(esp_idf_sys::wifi_ps_type_t_WIFI_PS_NONE);
+    }
+    println!("Режим энергосбережения Wi-Fi успешно ОТКЛЮЧЕН.");
+    thread::sleep(Duration::from_secs(2));
+
     //-------------------------------------------------//
     //--------------------_LocalData_------------------//
-    log_to_lcd!("Инициализация времени...");
+    main_window.set_global_wifi_status("online".into());
+    log_to_lcdln!("Инициализация времени...");
     let sntp = EspSntp::new_default().unwrap();
-    log_to_lcd!("Ожидание точного времени...");
+    log_to_lcdln!("Ожидание точного времени...");
     while sntp.get_sync_status() != SyncStatus::Completed {
         FreeRtos::delay_ms(500);
     }
@@ -93,7 +262,8 @@ fn main() {
         std::env::set_var("TZ", "MSK-3");
         esp_idf_sys::tzset();
     }
-    log_to_lcd!("Время успешно синхронизировано!");
+    log_to_lcdln!("Время успешно синхронизировано!");
+    std::mem::forget(sntp);
     main_window.set_is_loading(false);
     //-------------------------------------------------//
     //---------------------_TIMER_DATA_----------------//
@@ -118,21 +288,37 @@ fn main() {
     let timer_bmp = slint::Timer::default();
     {
         let ui_bmp = main_window.as_weak();
-        let timer_bmp_action = move || {
-            let mut i2c_ref = i2c_driver.borrow_mut();
-            let bmp180 = BMP180::new(&mut *i2c_ref, Delay::default());
-            let mut bmp180 = bmp180.initialize().expect("BMP not init");
-            let (t, p, a) = bmp180
-                .read_all(bmp180_driver::Resolution::Standard)
-                .unwrap();
-            if let Some(ui) = ui_bmp.upgrade() {
-                ui.set_global_temp(format!("{:.1}", t).into());
-                let pressure_mm_hg = p as f64 / 133.3224;
-                let press_str = format!("{:.1} ", pressure_mm_hg);
-                ui.set_global_pressure(press_str.into());
-                ui.set_global_altitude(format!("{:.0}", a).into());
+
+        let i2c_driver_clone = i2c_driver.clone();
+        let mut bmp_holder = None;
+
+        let mut timer_bmp_action = move || {
+            let mut i2c_ref = i2c_driver_clone.borrow_mut();
+            if bmp_holder.is_none() {
+                println!("[BMP180] Первая инициализация датчика...");
+                unsafe {
+                    let static_i2c: &mut I2cDriver<'static> = std::mem::transmute(&mut *i2c_ref);
+                    let bmp_init = BMP180::new(static_i2c, esp_idf_hal::delay::FreeRtos);
+
+                    if let Ok(bmp_ready) = bmp_init.initialize() {
+                        bmp_holder = Some(bmp_ready);
+                    }
+                }
+            }
+            if let Some(ref mut bmp180) = bmp_holder {
+                let (t, p, a) = bmp180
+                    .read_all(bmp180_driver::Resolution::Standard)
+                    .unwrap();
+                if let Some(ui) = ui_bmp.upgrade() {
+                    ui.set_global_temp(format!("{:.1}", t).into());
+                    let pressure_mm_hg = p as f64 / 133.3224;
+                    let press_str = format!("{:.1} ", pressure_mm_hg);
+                    ui.set_global_pressure(press_str.into());
+                    ui.set_global_altitude(format!("{:.0}", a).into());
+                }
             }
         };
+        timer_bmp_action();
         timer_bmp.start(
             slint::TimerMode::Repeated,
             Duration::from_secs(10),
@@ -151,8 +337,8 @@ fn main() {
                 const LON: &str = "34.3539";
                 let config = Configuration {
                     timeout: Some(Duration::from_secs(10)),
-                    buffer_size: Some(1024),
-                    buffer_size_tx: Some(512),
+                    buffer_size: Some(1024 * 8),
+                    buffer_size_tx: Some(512 * 2),
                     ..Default::default()
                 };
                 match EspHttpConnection::new(&config) {
@@ -209,6 +395,30 @@ fn main() {
             yandex_weather_thread,
         );
     }
-    //-------------------------------------------------//
-    display.touch_pad_loop();
+    //---------------------------------------------------------//
+    //---------------------_MQTT_Brocker_----------------------//
+    thread::spawn(move || {
+        let listener = TcpListener::bind("0.0.0.0:1883").unwrap();
+        println!("MQTT Сервер успешно запущен на ESP32 и слушает порт 1883...");
+
+        for stream in listener.incoming() {
+            match stream {
+                Ok(socket) => {
+                    thread::spawn(move || {
+                        if let Err(e) = handle_client(socket) {
+                            println!("Сессия завершена с ошибкой: {:?}", e);
+                        }
+                    });
+                }
+                Err(e) => println!("TCP Error: {:?}", e),
+            }
+        }
+    });
+    //---------------------------------------------------------//
+    let mut was_pressed = false;
+    let mut release_debounce_counter = 0;
+    let mut last_slint_pos = slint::LogicalPosition::new(0.0, 0.0);
+    loop {
+        display.handle_touch_pad(was_pressed, release_debounce_counter, last_slint_pos);
+    }
 }

@@ -14,7 +14,7 @@ use esp_idf_sys::{
     self as idf, EspError, esp_lcd_panel_handle_t, esp_lcd_rgb_panel_config_t, esp_lcd_rgb_timing_t,
 };
 use slint::{
-    PhysicalSize,
+    LogicalPosition, PhysicalSize,
     platform::{
         Platform, PointerEventButton, WindowEvent, set_platform,
         software_renderer::{
@@ -40,9 +40,12 @@ impl Display {
         Display::new(Self::WIDTH, Display::HEIGHT, Self::DEFAULT_HZ, i2c)
     }
     pub fn new(width: usize, heigth: usize, hz: u32, i2c: Rc<RefCell<I2cDriver<'static>>>) -> Self {
-        // let window = MinimalSoftwareWindow::new(RepaintBufferType::ReusedBuffer);
-        let window = MinimalSoftwareWindow::new(RepaintBufferType::SwappedBuffers);
-
+        let window = MinimalSoftwareWindow::new(RepaintBufferType::ReusedBuffer);
+        set_platform(Box::new(DisplayPlatform::new(
+            window.clone(),
+            Instant::now(),
+        )))
+        .expect("Ну установилась платформа");
         let mut display = Display {
             panel_handle: std::ptr::null_mut(),
             panel_config: unsafe {
@@ -50,27 +53,29 @@ impl Display {
             },
             i2c: i2c,
             frame_buffer: Rc::new(RefCell::new(&mut [])),
-            platform: DisplayPlatform::new(window.clone(), Instant::now()),
+            platform: DisplayPlatform::new(window, Instant::now()),
         };
-        set_platform(Box::new(DisplayPlatform::new(window, Instant::now())))
-            .expect("Ну установилась платформа");
+
         let timings = display.init_timings(width, heigth, hz);
         display.init_panel_config(timings);
         display.init_panel_handle();
-        *display.frame_buffer.borrow_mut() = unsafe {
+        display.init_buffer();
+        display.init_i2c();
+        display
+    }
+    fn init_buffer(&mut self) {
+        *self.frame_buffer.borrow_mut() = unsafe {
             let mut fb_ptr: *mut std::ffi::c_void = std::ptr::null_mut();
-            let ret = idf::esp_lcd_rgb_panel_get_frame_buffer(display.panel_handle, 1, &mut fb_ptr);
+            let ret = idf::esp_lcd_rgb_panel_get_frame_buffer(self.panel_handle, 1, &mut fb_ptr);
             if ret != idf::ESP_OK || fb_ptr.is_null() {
                 println!("❌ Не удалось получить указатель на фреймбуфер в PSRAM!");
             }
             let frame_buffer = std::slice::from_raw_parts_mut(
-                fb_ptr as *mut Rgb565Pixel, // Кастуем сразу в тип пикселей Slint
+                fb_ptr as *mut Rgb565Pixel,
                 Self::WIDTH * Self::HEIGHT,
             );
             frame_buffer
         };
-        display.init_i2c();
-        display
     }
     fn init_i2c(&mut self) {
         // CH422G
@@ -96,14 +101,14 @@ impl Display {
             unsafe { std::mem::MaybeUninit::<idf::esp_lcd_rgb_timing_t>::zeroed().assume_init() };
         timings.pclk_hz = hz;
         timings.h_res = width as u32;
-        timings.hsync_pulse_width = 4; //48; //+
-        timings.hsync_back_porch = 8; //+
-        timings.hsync_front_porch = 8; //40; //+
+        timings.hsync_pulse_width = 4;
+        timings.hsync_back_porch = 8;
+        timings.hsync_front_porch = 8;
 
         timings.v_res = height as u32;
-        timings.vsync_pulse_width = 4; //3; //+
-        timings.vsync_back_porch = 8; //32; //+
-        timings.vsync_front_porch = 8; //13; //+
+        timings.vsync_pulse_width = 4;
+        timings.vsync_back_porch = 8;
+        timings.vsync_front_porch = 8;
 
         let mut timing_flags = unsafe {
             std::mem::MaybeUninit::<idf::esp_lcd_rgb_timing_t__bindgen_ty_1>::zeroed().assume_init()
@@ -124,7 +129,7 @@ impl Display {
         self.panel_config.timings = timings;
         self.panel_config.data_width = 16;
         self.panel_config.bits_per_pixel = 16;
-        self.panel_config.bounce_buffer_size_px = 800 * 10;
+        self.panel_config.bounce_buffer_size_px = 800 * 3;
         self.panel_config.sram_trans_align = 32;
         self.panel_config.psram_trans_align = 64;
 
@@ -134,8 +139,7 @@ impl Display {
         self.panel_config.de_gpio_num = 5; //DE from arduino
         self.panel_config.disp_gpio_num = -1;
 
-        // self.panel_config.num_fbs = 1;
-        self.panel_config.num_fbs = 2;
+        self.panel_config.num_fbs = 1;
         let gpio_array = [
             14, // B0
             38, // B1
@@ -183,9 +187,9 @@ impl Display {
             }
         }
     }
-    pub fn panel_handle(&mut self) -> esp_lcd_panel_handle_t {
-        self.panel_handle
-    }
+    // pub fn panel_handle(&mut self) -> esp_lcd_panel_handle_t {
+    //     self.panel_handle
+    // }
     pub fn clear_screen(&mut self, color: Rgb565) {
         let raw_color = ((color.r() as u16) << 11) | ((color.g() as u16) << 5) | (color.b() as u16);
         let shift_x: i32 = 32;
@@ -225,49 +229,46 @@ impl Display {
     }
     pub fn update(&self) {
         self.platform.window.draw_if_needed(|render| {
-            render.render_by_line(self.clone());
+            render.render_by_line(self);
         });
     }
-    pub fn touch_pad_loop(&self) {
-        let mut was_pressed = false;
-        let mut release_debounce_counter = 0;
-        let mut last_slint_pos = slint::LogicalPosition::new(0.0, 0.0);
+    pub fn handle_touch_pad(
+        &self,
+        mut was_pressed: bool,
+        mut release_debounce_counter: i32,
+        mut last_slint_pos: LogicalPosition,
+    ) {
         let window = self.window();
-        loop {
-            update_timers_and_animations();
-            if let Some((x, y)) = self.touch_pad().read_touch() {
-                release_debounce_counter = 0;
-                last_slint_pos = slint::LogicalPosition::new(x as f32, y as f32);
+        update_timers_and_animations();
+        if let Some((x, y)) = self.touch_pad().read_touch() {
+            release_debounce_counter = 0;
+            last_slint_pos = slint::LogicalPosition::new(x as f32, y as f32);
 
-                window.dispatch_event(slint::platform::WindowEvent::PointerMoved {
+            window.dispatch_event(slint::platform::WindowEvent::PointerMoved {
+                position: last_slint_pos,
+            });
+            if !was_pressed {
+                window.dispatch_event(WindowEvent::PointerPressed {
                     position: last_slint_pos,
+                    button: PointerEventButton::Left,
                 });
-                if !was_pressed {
-                    window.dispatch_event(WindowEvent::PointerPressed {
+                was_pressed = true;
+            }
+        } else {
+            if was_pressed {
+                release_debounce_counter += 1;
+                if release_debounce_counter >= 3 {
+                    window.dispatch_event(WindowEvent::PointerReleased {
                         position: last_slint_pos,
                         button: PointerEventButton::Left,
                     });
-                    was_pressed = true;
-                }
-            } else {
-                if was_pressed {
-                    release_debounce_counter += 1;
-                    if release_debounce_counter >= 3 {
-                        window.dispatch_event(WindowEvent::PointerReleased {
-                            position: last_slint_pos,
-                            button: PointerEventButton::Left,
-                        });
-                        was_pressed = false;
-                        release_debounce_counter = 0;
-                    }
+                    was_pressed = false;
+                    release_debounce_counter = 0;
                 }
             }
-            self.update();
-            // window.draw_if_needed(|renderer| {
-            // renderer.render_by_line(display.clone().borrow_mut().clone());
-            // });
-            FreeRtos::delay_ms(8);
         }
+        self.update();
+        FreeRtos::delay_ms(8);
     }
 }
 
@@ -321,7 +322,7 @@ impl GT911 {
     }
 }
 
-impl LineBufferProvider for Display {
+impl LineBufferProvider for &Display {
     type TargetPixel = Rgb565Pixel;
     fn process_line(
         &mut self,
@@ -329,20 +330,9 @@ impl LineBufferProvider for Display {
         range: Range<usize>, // Диапазон пикселей по X (например, 0..800)
         render_fn: impl FnOnce(&mut [Self::TargetPixel]),
     ) {
-        if range.is_empty() {
-            return;
-        }
-
-        // 2. Вычисляем начальный индекс строки в одномерном фреймбуфере (Y * WIDTH)
-        let row_start_index = line * Self::WIDTH;
-
-        // 3. Выделяем срез (slice) во фреймбуфере, куда Slint должен нарисовать пиксели
-        // Используем range, чтобы Slint писал строго в свои координаты по X
-        let buffer_chunk = &mut self.frame_buffer.borrow_mut()
-            [row_start_index + range.start..row_start_index + range.end];
-
-        // 4. Запускаем рендеринг Slint прямо в память PSRAM (без промежуточных копирований!)
-        render_fn(buffer_chunk);
+        let offset = line * Display::WIDTH;
+        let line_slice = &mut self.frame_buffer.borrow_mut()[offset..offset + Display::WIDTH];
+        render_fn(&mut line_slice[range]);
     }
 }
 impl OriginDimensions for Display {
