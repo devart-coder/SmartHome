@@ -64,7 +64,6 @@ export component Greetings inherits Rectangle {
                     Text {
                         text: "🌡️ "+ temperature +" °C";
                         font-size: 16px;
-                        padding: 10px;
                         color: temperature > 25 ? hot_color : temperature <=25 && temperature >=18 ? warm_color : cold_color;
                     }
                 }
@@ -78,7 +77,6 @@ export component Greetings inherits Rectangle {
                     padding-top: 8px;
                     padding-bottom: 8px;
                     Text {
-                        padding: 10px;
                         color: text_color;
                         text: "🎈 "+ pressure + " мм.рт.";
                         font-size: 16px;

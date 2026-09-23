@@ -1,7 +1,11 @@
-import { Button, Slider, Switch, ScrollView } from "std-widgets.slint";
+import { Button, Slider, Switch, ScrollView, ProgressIndicator } from "std-widgets.slint";
 import { MainTab } from "main_tab/main_tab.slint";
 import { WeatherFact } from "main_tab/yandex_weather.slint";
 export component MainWindow inherits Window {
+// Свойства для связи с Rust
+    in-out property <string> ota-status: "Ожидание обновления";
+    in-out property <float> ota-progress: 0.0; // от 0.0 до 1.0
+    callback start-ota-clicked();
     Text {
         visible: false;
         font-size: 16px;
@@ -48,6 +52,7 @@ export component MainWindow inherits Window {
                 }
         }
     }
+
     in-out property <int> current-tab: 0;
     in-out property <string> global-time: "____, --:-- --.--.--";
     in-out property <string> global-temp: "--";
