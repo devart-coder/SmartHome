@@ -1,11 +1,20 @@
 import { StandardButton } from "std-widgets.slint";
+export struct LightControllEntity{
+    name:string,
+    is_on:bool,
+}
+
 export component LightControll inherits Rectangle{
+    in-out property <[LightControllEntity]> light_array_g1;
+    in-out property <[LightControllEntity]> light_array_g2;
     border-radius: 8px;
     border-width: 2px;
-    in property <brush> text_color:white;
-    in-out property <brush> widget_background;
     background: widget_background;
     border-color: self.background.brighter(0.25);
+
+    in property <brush> text_color:white;
+    in-out property <brush> widget_background;
+
     GridLayout {
         padding: 10px;
         spacing: 10px;
@@ -15,7 +24,7 @@ export component LightControll inherits Rectangle{
                 border-radius: 8px;
                 border-width: 2px;
                 background: widget_background.brighter(0.25);
-                border-color: is_selected ? darkcyan : self.background.brighter(0.25);
+                border-color: (light_array_g1[index].is-on||room_rect_1.is_selected) ? darkcyan : self.background.brighter(0.26);
                 TouchArea {
                     clicked => {
                         room-rect_1.is_selected = !room-rect_1.is_selected;
@@ -37,7 +46,7 @@ export component LightControll inherits Rectangle{
                 border-radius: 8px;
                 border-width: 2px;
                 background: widget_background.brighter(0.25);
-                border-color: is_selected ? darkcyan : self.background.brighter(0.25);
+                border-color: (light_array_g2[index].is-on||room_rect_2.is_selected) ? darkcyan : self.background.brighter(0.26);
                 TouchArea {
                     clicked => {
                         room-rect_2.is_selected = !room-rect_2.is_selected;
