@@ -8,149 +8,20 @@ use esp_idf_svc::http::client::{Configuration, EspHttpConnection};
 use esp_idf_svc::ota::EspOta;
 use esp_idf_svc::sntp::{EspSntp, SyncStatus};
 use esp_idf_svc::wifi::AuthMethod;
-use lcd_touch_display::display::Display;
-use lcd_touch_display::wifi::Wifi;
-use lcd_touch_display::yandex_weather::YandexWeatherFact;
+use master_display::display::Display;
+use master_display::ui::{MainWindow, WeatherFact};
+use master_display::wifi::Wifi;
+use master_display::yandex_weather::YandexWeatherFact;
+use master_display::{Handler, mqtt};
 use slint::platform::update_timers_and_animations;
 use slint::{ComponentHandle, SharedString};
 use std::cell::RefCell;
+use std::collections::{BTreeSet, HashMap};
 use std::net::{TcpListener, TcpStream};
 use std::rc::Rc;
-use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use crate::ui::{MainWindow, WeatherFact};
-use esp_idf_svc::http::Headers;
-use std::io::{Read, Write};
-mod ui {
-    slint::include_modules!();
-}
-use mqttrs::{Connack, Connect, ConnectReturnCode, Packet, Pid, QoS};
-
-fn handle_client(mut stream: TcpStream) -> std::io::Result<()> {
-    // Выделяем буфер под входящие данные.
-    // Для экономии памяти на ESP32 1024 байт под пакет — более чем достаточно.
-    let mut buffer = vec![0u8; 1024];
-    let client_addr = stream.peer_addr()?;
-    log::info!("Новый клиент подключился к ESP32: {:?}", client_addr);
-
-    stream.set_read_timeout(Some(Duration::from_secs(30)))?;
-
-    loop {
-        match stream.read(&mut buffer) {
-            Ok(0) => {
-                println!("Клиент {:?} закрыл соединение.", client_addr);
-                break;
-            }
-            Ok(bytes_read) => {
-                // Берем срез буфера с реально прочитанными байтами
-                let mut data_slice = &buffer[..bytes_read];
-
-                // Декодируем пакет с помощью mqttrs::decode_slice
-                match mqttrs::decode_slice(&mut data_slice) {
-                    Ok(Some(Packet::Connect(connect_packet))) => {
-                        println!("MQTT CONNECT от: {}", connect_packet.client_id);
-
-                        // Формируем ответ подтверждения (CONNACK)
-                        let connack = Packet::Connack(Connack {
-                            session_present: false,
-                            code: ConnectReturnCode::Accepted,
-                        });
-
-                        // Кодируем пакет в байты
-                        let mut out_buf = [0u8; 128];
-                        if let Ok(len) = mqttrs::encode_slice(&connack, &mut out_buf) {
-                            stream.write_all(&out_buf[..len])?;
-                            stream.flush()?;
-                            println!("Клиент успешно авторизован!");
-                        }
-                    }
-                    Ok(Some(Packet::Publish(pub_packet))) => {
-                        let payload = String::from_utf8_lossy(&pub_packet.payload);
-                        println!("Получен топик [{}]: {}", pub_packet.topic_name, payload);
-
-                        // В mqttrs QoS и Packet ID объединены в поле qospid
-                        match pub_packet.qospid {
-                            mqttrs::QosPid::AtLeastOnce(pid) => {
-                                // Если QoS = AtLeastOnce (QoS 1), мы ОБЯЗАНЫ отправить PUBACK с этим же pid
-                                let puback = Packet::Puback(pid);
-                                let mut out_buf = [0u8; 64];
-
-                                if let Ok(len) = mqttrs::encode_slice(&puback, &mut out_buf) {
-                                    stream.write_all(&out_buf[..len])?;
-                                    stream.flush()?;
-                                    println!("Отправлен PUBACK для пакета ID: {:?}", pid);
-                                }
-                            }
-                            mqttrs::QosPid::ExactlyOnce(pid) => {
-                                println!("Запрошен QoS 2 (ExactlyOnce) для пакета ID: {:?}", pid);
-                            }
-                            mqttrs::QosPid::AtMostOnce => {
-                                println!("Сообщение доставлено с QoS 0 (AtMostOnce)");
-                            }
-                        }
-                    }
-
-                    Ok(Some(Packet::Subscribe(sub_packet))) => {
-                        println!(
-                            "Клиент запросил подписку на топики: {:?}",
-                            sub_packet.topics
-                        );
-
-                        // Формируем коды возврата для каждого топика
-                        let mut return_codes = Vec::new();
-                        for _ in &sub_packet.topics {
-                            // ИСПРАВЛЕНО: передаем успешный статус с уровнем QoS 0 (AtMostOnce)
-                            return_codes
-                                .push(mqttrs::SubscribeReturnCodes::Success(QoS::AtMostOnce));
-                        }
-
-                        // Создаем пакет SUBACK
-                        let suback = Packet::Suback(mqttrs::Suback {
-                            pid: sub_packet.pid,
-                            return_codes,
-                        });
-
-                        let mut out_buf = [0u8; 128];
-                        if let Ok(len) = mqttrs::encode_slice(&suback, &mut out_buf) {
-                            stream.write_all(&out_buf[..len])?;
-                            stream.flush()?;
-                            println!("Отправлен SUBACK для подписок клиента.");
-                        }
-                    }
-
-                    Ok(Some(Packet::Pingreq)) => {
-                        // Ответ на Keep-Alive проверку от клиента (PINGRESP)
-                        let pingresp = Packet::Pingresp;
-                        let mut out_buf = [0u8; 16];
-                        if let Ok(len) = mqttrs::encode_slice(&pingresp, &mut out_buf) {
-                            stream.write_all(&out_buf[..len])?;
-                            stream.flush()?;
-                        }
-                    }
-                    Ok(Some(other)) => {
-                        println!("Получен пакет типа: {:?}", other);
-                    }
-                    Ok(None) => {
-                        // Пакет пришел не полностью, ждем оставшиеся байты в следующем цикле read
-                        continue;
-                    }
-                    Err(e) => {
-                        println!("Ошибка протокола MQTT: {:?}", e);
-                        break;
-                    }
-                }
-            }
-            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => continue,
-            Err(e) => {
-                println!("Ошибка сокета клиента {:?}: {:?}", client_addr, e);
-                break;
-            }
-        }
-    }
-    Ok(())
-}
 fn main() {
     esp_idf_sys::link_patches();
 
@@ -173,6 +44,7 @@ fn main() {
     //SlintMainWindowDraw
     let main_window = MainWindow::new().unwrap();
     main_window.show().unwrap();
+    let _ = main_window.run();
     main_window.set_is_loading(true);
     display.update();
     FreeRtos::delay_ms(100);
@@ -397,15 +269,17 @@ fn main() {
     }
     //---------------------------------------------------------//
     //---------------------_MQTT_Brocker_----------------------//
+    let ui_weak = main_window.as_weak();
     thread::spawn(move || {
         let listener = TcpListener::bind("0.0.0.0:1883").unwrap();
         println!("MQTT Сервер успешно запущен на ESP32 и слушает порт 1883...");
-
         for stream in listener.incoming() {
             match stream {
                 Ok(socket) => {
+                    let ui_for_client = ui_weak.clone();
                     thread::spawn(move || {
-                        if let Err(e) = handle_client(socket) {
+                        let h = Handler::new();
+                        if let Err(e) = h.handle_client(socket, ui_for_client.clone()) {
                             println!("Сессия завершена с ошибкой: {:?}", e);
                         }
                     });

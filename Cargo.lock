@@ -2865,27 +2865,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 
 [[package]]
-name = "lcd_touch_display"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bmp180-driver",
- "chrono",
- "embedded-graphics",
- "embedded-graphics-framebuf",
- "embuild",
- "esp-idf-hal",
- "esp-idf-svc",
- "esp-idf-sys 0.37.2",
- "esp_idf_logger",
- "log",
- "mqttrs",
- "slint",
- "slint-build",
- "tinyjson",
-]
-
-[[package]]
 name = "lebe"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3053,6 +3032,27 @@ checksum = "5c463f9c428b7fc5ec885dcd39ce4aa61e29111d0e33483f6f98c74e89d8621e"
 dependencies = [
  "lyon_geom",
  "num-traits",
+]
+
+[[package]]
+name = "master_display"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bmp180-driver",
+ "chrono",
+ "embedded-graphics",
+ "embedded-graphics-framebuf",
+ "embuild",
+ "esp-idf-hal",
+ "esp-idf-svc",
+ "esp-idf-sys 0.37.2",
+ "esp_idf_logger",
+ "log",
+ "mqttrs",
+ "slint",
+ "slint-build",
+ "tinyjson",
 ]
 
 [[package]]

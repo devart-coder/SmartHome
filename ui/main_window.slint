@@ -1,6 +1,7 @@
 import { Button, Slider, Switch, ScrollView, ProgressIndicator } from "std-widgets.slint";
 import { MainTab } from "main_tab/main_tab.slint";
 import { WeatherFact } from "main_tab/yandex_weather.slint";
+import { LightControllEntity } from "main_tab/light_control.slint";
 export component MainWindow inherits Window {
 // Свойства для связи с Rust
     in-out property <string> ota-status: "Ожидание обновления";
@@ -61,6 +62,20 @@ export component MainWindow inherits Window {
     in-out property <string> global-altitude:"--";
     in-out property <string> global-wifi_status : "offline";
     in-out property <string> global-weather_status:"offline";
+    in-out property <[LightControllEntity]> light_array_g1:
+    [
+        {name:"kitchen",is_on:false},
+        {name:"hallway",is_on:false},
+        {name:"hall",is_on:false},
+        {name:"pantry",is_on:false},
+    ];
+    in-out property <[LightControllEntity]> light_array_g2:
+    [
+        {name:"controll_center",is_on:false},
+        {name:"restroom",is_on:false},
+        {name:"bathroom",is_on:false},
+        {name:"breakroom",is_on:false},
+    ];
     if(!root.is_loading):HorizontalLayout {
         width: root.width;
         VerticalLayout {
@@ -111,6 +126,8 @@ export component MainWindow inherits Window {
             weather_status: global-weather_status;
             popup_x:root.width;
             popup_y:root.height;
+            light_array_g1: light_array_g1;
+            light_array_g2: light_array_g2;
         }
     }
 }
