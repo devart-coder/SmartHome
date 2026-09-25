@@ -5,14 +5,13 @@ use esp_idf_hal::i2c::{I2cConfig, I2cDriver};
 use esp_idf_hal::peripherals::Peripherals;
 use esp_idf_hal::units::Hertz;
 use esp_idf_svc::http::client::{Configuration, EspHttpConnection};
-use esp_idf_svc::ota::EspOta;
 use esp_idf_svc::sntp::{EspSntp, SyncStatus};
 use esp_idf_svc::wifi::AuthMethod;
+use master_display::Handler;
 use master_display::display::Display;
 use master_display::ui::{MainWindow, WeatherFact};
 use master_display::wifi::Wifi;
 use master_display::yandex_weather::YandexWeatherFact;
-use master_display::{Handler, mqtt};
 use slint::platform::update_timers_and_animations;
 use slint::{ComponentHandle, SharedString};
 use std::cell::RefCell;
@@ -38,8 +37,7 @@ fn main() {
         )
         .unwrap(),
     ));
-    let display = Display::default(i2c_driver.clone());
-
+    let mut display = Display::default(i2c_driver.clone());
     //------------------------------------------------------------------------//
     //SlintMainWindowDraw
     let main_window = MainWindow::new().unwrap();
@@ -289,10 +287,7 @@ fn main() {
         }
     });
     //---------------------------------------------------------//
-    let mut was_pressed = false;
-    let mut release_debounce_counter = 0;
-    let mut last_slint_pos = slint::LogicalPosition::new(0.0, 0.0);
     loop {
-        display.handle_touch_pad(was_pressed, release_debounce_counter, last_slint_pos);
+        display.handle_touch_pad();
     }
 }

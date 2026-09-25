@@ -13,6 +13,7 @@ use esp_idf_hal::{delay::FreeRtos, i2c::I2cDriver};
 use esp_idf_sys::{
     self as idf, EspError, esp_lcd_panel_handle_t, esp_lcd_rgb_panel_config_t, esp_lcd_rgb_timing_t,
 };
+use log::{error, info};
 use slint::{
     LogicalPosition, PhysicalSize,
     platform::{
@@ -27,33 +28,56 @@ use slint::{
 pub struct Display {
     panel_handle: esp_lcd_panel_handle_t,
     panel_config: esp_lcd_rgb_panel_config_t,
-    frame_buffer: Rc<RefCell<&'static mut [Rgb565Pixel]>>,
+    fb0: *mut u16,
+    fb1: *mut u16,
+    active_fb: usize,
     i2c: Rc<RefCell<I2cDriver<'static>>>,
     platform: DisplayPlatform,
+    status: TouchPadStatus,
 }
-
+#[derive(Clone, Debug)]
+struct TouchPadStatus {
+    touched: bool,
+    release_counter: u8,
+    last_position: LogicalPosition,
+}
+#[derive(Clone)]
+pub struct DisplayPlatform {
+    window: Rc<MinimalSoftwareWindow>,
+    start_time: Instant,
+}
 impl Display {
-    const DEFAULT_HZ: u32 = 14_000_000;
+    const DEFAULT_HZ: u32 = 13_000_000;
     const WIDTH: usize = 800;
     const HEIGHT: usize = 480;
     pub fn default(i2c: Rc<RefCell<I2cDriver<'static>>>) -> Self {
         Display::new(Self::WIDTH, Display::HEIGHT, Self::DEFAULT_HZ, i2c)
     }
     pub fn new(width: usize, heigth: usize, hz: u32, i2c: Rc<RefCell<I2cDriver<'static>>>) -> Self {
-        let window = MinimalSoftwareWindow::new(RepaintBufferType::ReusedBuffer);
-        set_platform(Box::new(DisplayPlatform::new(
+        let window = MinimalSoftwareWindow::new(RepaintBufferType::SwappedBuffers);
+        if let Err(err) = set_platform(Box::new(DisplayPlatform::new(
             window.clone(),
             Instant::now(),
-        )))
-        .expect("Ну установилась платформа");
+        ))) {
+            error!("Не установилась платформа: {}", err);
+        }
         let mut display = Display {
             panel_handle: std::ptr::null_mut(),
             panel_config: unsafe {
                 std::mem::MaybeUninit::<idf::esp_lcd_rgb_panel_config_t>::zeroed().assume_init()
             },
             i2c: i2c,
-            frame_buffer: Rc::new(RefCell::new(&mut [])),
+            fb0: std::ptr::null_mut(),
+            fb1: std::ptr::null_mut(),
+            active_fb: 0,
             platform: DisplayPlatform::new(window, Instant::now()),
+            status: {
+                TouchPadStatus {
+                    touched: false,
+                    release_counter: 0,
+                    last_position: LogicalPosition::new(0.0, 0.0),
+                }
+            },
         };
 
         let timings = display.init_timings(width, heigth, hz);
@@ -64,18 +88,17 @@ impl Display {
         display
     }
     fn init_buffer(&mut self) {
-        *self.frame_buffer.borrow_mut() = unsafe {
-            let mut fb_ptr: *mut std::ffi::c_void = std::ptr::null_mut();
-            let ret = idf::esp_lcd_rgb_panel_get_frame_buffer(self.panel_handle, 1, &mut fb_ptr);
-            if ret != idf::ESP_OK || fb_ptr.is_null() {
-                println!("❌ Не удалось получить указатель на фреймбуфер в PSRAM!");
+        unsafe {
+            let mut fb0: *mut std::ffi::c_void = std::ptr::null_mut();
+            let mut fb1: *mut std::ffi::c_void = std::ptr::null_mut();
+            let ret =
+                idf::esp_lcd_rgb_panel_get_frame_buffer(self.panel_handle, 2, &mut fb0, &mut fb1);
+            if ret != idf::ESP_OK || fb0.is_null() || fb1.is_null() {
+                error!("❌ Не удалось получить фреймбуферы! {:?}", ret);
             }
-            let frame_buffer = std::slice::from_raw_parts_mut(
-                fb_ptr as *mut Rgb565Pixel,
-                Self::WIDTH * Self::HEIGHT,
-            );
-            frame_buffer
-        };
+            self.fb0 = fb0 as *mut u16;
+            self.fb1 = fb1 as *mut u16;
+        }
     }
     fn init_i2c(&mut self) {
         // CH422G
@@ -101,14 +124,14 @@ impl Display {
             unsafe { std::mem::MaybeUninit::<idf::esp_lcd_rgb_timing_t>::zeroed().assume_init() };
         timings.pclk_hz = hz;
         timings.h_res = width as u32;
-        timings.hsync_pulse_width = 4;
-        timings.hsync_back_porch = 8;
-        timings.hsync_front_porch = 8;
+        timings.hsync_pulse_width = 1;
+        timings.hsync_back_porch = 36;
+        timings.hsync_front_porch = 20;
 
         timings.v_res = height as u32;
-        timings.vsync_pulse_width = 4;
-        timings.vsync_back_porch = 8;
-        timings.vsync_front_porch = 8;
+        timings.vsync_pulse_width = 1;
+        timings.vsync_back_porch = 6;
+        timings.vsync_front_porch = 4;
 
         let mut timing_flags = unsafe {
             std::mem::MaybeUninit::<idf::esp_lcd_rgb_timing_t__bindgen_ty_1>::zeroed().assume_init()
@@ -129,7 +152,7 @@ impl Display {
         self.panel_config.timings = timings;
         self.panel_config.data_width = 16;
         self.panel_config.bits_per_pixel = 16;
-        self.panel_config.bounce_buffer_size_px = 800 * 3;
+        self.panel_config.bounce_buffer_size_px = Self::WIDTH * 10;
         self.panel_config.sram_trans_align = 32;
         self.panel_config.psram_trans_align = 64;
 
@@ -139,7 +162,7 @@ impl Display {
         self.panel_config.de_gpio_num = 5; //DE from arduino
         self.panel_config.disp_gpio_num = -1;
 
-        self.panel_config.num_fbs = 1;
+        self.panel_config.num_fbs = 2;
         let gpio_array = [
             14, // B0
             38, // B1
@@ -175,49 +198,49 @@ impl Display {
     }
     fn init_panel_handle(&mut self) {
         unsafe {
-            print!("[Cоздание новой panel_handle] ");
+            info!("[Cоздание новой panel_handle] ");
             match idf::esp_lcd_new_rgb_panel(&self.panel_config, &mut self.panel_handle) {
-                idf::ESP_OK => println!("✅"),
-                err => println!("❎ : {}", EspError::from(err).unwrap()),
+                idf::ESP_OK => info!("✅"),
+                err => error!("❎ : {}", EspError::from(err).unwrap()),
             }
             print!("[Инициализация panel_handle] ");
             match idf::esp_lcd_panel_init(self.panel_handle) {
-                idf::ESP_OK => println!("✅"),
-                err => println!("❎ : {}", EspError::from(err).unwrap()),
+                idf::ESP_OK => info!("✅"),
+                err => error!("❎ : {}", EspError::from(err).unwrap()),
             }
         }
     }
-    // pub fn panel_handle(&mut self) -> esp_lcd_panel_handle_t {
-    //     self.panel_handle
-    // }
-    pub fn clear_screen(&mut self, color: Rgb565) {
-        let raw_color = ((color.r() as u16) << 11) | ((color.g() as u16) << 5) | (color.b() as u16);
-        let shift_x: i32 = 32;
-        self.frame_buffer.borrow_mut().fill(Rgb565Pixel(raw_color));
-        if shift_x != 0 {
-            for y in 0..Self::HEIGHT {
-                let row_start = y * Self::WIDTH;
-                //
-                if shift_x > 0 {
-                    // Сдвигаем строку вправо
-                    let shift = shift_x as usize;
-                    if shift < Self::WIDTH {
-                        self.frame_buffer.borrow_mut()
-                            [(row_start + shift)..(row_start + Self::WIDTH)]
-                            .fill(Rgb565Pixel(raw_color));
-                    }
-                } else {
-                    // Сдвигаем строку влево
-                    let shift = (-shift_x) as usize;
-                    if shift < Self::WIDTH {
-                        self.frame_buffer.borrow_mut()
-                            [(row_start + shift)..(row_start + Self::WIDTH)]
-                            .fill(Rgb565Pixel(raw_color));
-                    }
-                }
-            }
+
+    fn get_draw_buffer(&self) -> *mut u16 {
+        if self.active_fb == 0 {
+            self.fb1
+        } else {
+            self.fb0
         }
     }
+    fn swap_buffers(&mut self) {
+        let draw_buf = self.get_draw_buffer();
+        unsafe {
+            idf::esp_lcd_panel_draw_bitmap(
+                self.panel_handle,
+                0,
+                0,
+                Self::WIDTH as i32,
+                Self::WIDTH as i32,
+                draw_buf as *const std::ffi::c_void,
+            );
+        }
+        self.active_fb = !self.active_fb;
+    }
+
+    fn draw_buffer_ptr(&self) -> *mut u16 {
+        if self.active_fb == 0 {
+            self.fb1
+        } else {
+            self.fb0
+        }
+    }
+
     pub fn touch_pad(&self) -> GT911 {
         GT911::new(self.i2c.clone())
     }
@@ -227,43 +250,41 @@ impl Display {
     pub fn i2c(&self) -> Rc<RefCell<I2cDriver<'static>>> {
         Rc::clone(&self.i2c)
     }
-    pub fn update(&self) {
-        self.platform.window.draw_if_needed(|render| {
-            render.render_by_line(self);
+    pub fn update(&mut self) {
+        let was_redraw = self.platform.window.draw_if_needed(|render| {
+            render.render_by_line(&mut self.clone());
         });
+        if was_redraw {
+            self.swap_buffers();
+        }
     }
-    pub fn handle_touch_pad(
-        &self,
-        mut was_pressed: bool,
-        mut release_debounce_counter: i32,
-        mut last_slint_pos: LogicalPosition,
-    ) {
+    pub fn handle_touch_pad(&mut self) {
         let window = self.window();
         update_timers_and_animations();
         if let Some((x, y)) = self.touch_pad().read_touch() {
-            release_debounce_counter = 0;
-            last_slint_pos = slint::LogicalPosition::new(x as f32, y as f32);
+            self.status.release_counter = 0;
+            self.status.last_position = slint::LogicalPosition::new(x as f32, y as f32);
 
             window.dispatch_event(slint::platform::WindowEvent::PointerMoved {
-                position: last_slint_pos,
+                position: self.status.last_position,
             });
-            if !was_pressed {
+            if !self.status.touched {
                 window.dispatch_event(WindowEvent::PointerPressed {
-                    position: last_slint_pos,
+                    position: self.status.last_position,
                     button: PointerEventButton::Left,
                 });
-                was_pressed = true;
+                self.status.touched = true;
             }
         } else {
-            if was_pressed {
-                release_debounce_counter += 1;
-                if release_debounce_counter >= 3 {
+            if self.status.touched {
+                self.status.release_counter += 1;
+                if self.status.release_counter >= 3 {
                     window.dispatch_event(WindowEvent::PointerReleased {
-                        position: last_slint_pos,
+                        position: self.status.last_position,
                         button: PointerEventButton::Left,
                     });
-                    was_pressed = false;
-                    release_debounce_counter = 0;
+                    self.status.touched = false;
+                    self.status.release_counter = 0;
                 }
             }
         }
@@ -321,8 +342,7 @@ impl GT911 {
         self.driver.borrow_mut().write(addr, &payload, 100)
     }
 }
-
-impl LineBufferProvider for &Display {
+impl LineBufferProvider for &mut Display {
     type TargetPixel = Rgb565Pixel;
     fn process_line(
         &mut self,
@@ -331,7 +351,15 @@ impl LineBufferProvider for &Display {
         render_fn: impl FnOnce(&mut [Self::TargetPixel]),
     ) {
         let offset = line * Display::WIDTH;
-        let line_slice = &mut self.frame_buffer.borrow_mut()[offset..offset + Display::WIDTH];
+        let draw_ptr = self.draw_buffer_ptr();
+
+        let fb = unsafe {
+            std::slice::from_raw_parts_mut(
+                draw_ptr as *mut Rgb565Pixel,
+                Display::WIDTH * Display::HEIGHT,
+            )
+        };
+        let line_slice = &mut fb[offset..offset + Display::WIDTH];
         render_fn(&mut line_slice[range]);
     }
 }
@@ -339,12 +367,6 @@ impl OriginDimensions for Display {
     fn size(&self) -> Size {
         Size::new(Self::WIDTH as u32, Self::HEIGHT as u32)
     }
-}
-
-#[derive(Clone)]
-pub struct DisplayPlatform {
-    window: Rc<MinimalSoftwareWindow>,
-    start_time: Instant,
 }
 
 impl DisplayPlatform {
@@ -359,7 +381,6 @@ impl DisplayPlatform {
         &mut self.window
     }
 }
-
 impl Platform for DisplayPlatform {
     fn create_window_adapter(
         &self,

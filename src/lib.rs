@@ -1,5 +1,4 @@
 pub mod display;
-pub mod mqtt;
 pub mod wifi;
 pub mod yandex_weather;
 
