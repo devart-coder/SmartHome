@@ -20,14 +20,13 @@ export component LightControll inherits Rectangle{
         spacing: 10px;
         Row {
             for room[index] in ["Кухня","Прихожая","Зал","Кладовая"] : room_rect_1:= Rectangle{
-                property <bool> is_selected: false;
                 border-radius: 8px;
                 border-width: 2px;
                 background: widget_background.brighter(0.25);
-                border-color: (light_array_g1[index].is-on||room_rect_1.is_selected) ? darkcyan : self.background.brighter(0.26);
+                border-color: (light_array_g1[index].is-on) ? darkcyan : self.background.brighter(0.26);
                 TouchArea {
                     clicked => {
-                        room-rect_1.is_selected = !room-rect_1.is_selected;
+                        light_array_g1[index].is-on = !light_array_g1[index].is-on;
                     }
                 }
                 Text {
@@ -42,14 +41,13 @@ export component LightControll inherits Rectangle{
         }
         Row {
             for room[index] in ["ЦУ","Уборная","Ванная","Покои"] : room_rect_2:= Rectangle{
-                property <bool> is_selected: false;
                 border-radius: 8px;
                 border-width: 2px;
                 background: widget_background.brighter(0.25);
-                border-color: (light_array_g2[index].is-on||room_rect_2.is_selected) ? darkcyan : self.background.brighter(0.26);
+                border-color: light_array_g2[index].is-on ? darkcyan : self.background.brighter(0.26);
                 TouchArea {
                     clicked => {
-                        room-rect_2.is_selected = !room-rect_2.is_selected;
+                        light_array_g2[index].is-on = !light_array_g2[index].is-on;
                     }
                 }
                 Text {
