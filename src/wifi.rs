@@ -6,24 +6,24 @@ use esp_idf_svc::{
 };
 
 #[derive(Debug, Default)]
-pub struct WifiConfigBuilder {
-    ssid: String,
-    password: String,
+pub struct WifiConfigBuilder<'a> {
+    ssid: &'a str,
+    password: &'a str,
     auth_method: AuthMethod,
 }
-impl WifiConfigBuilder {
+impl<'a> WifiConfigBuilder<'a> {
     pub fn builder() -> Self {
         Self {
             ..Default::default()
         }
     }
 
-    pub fn set_ssid(mut self, ssid: String) -> Self {
+    pub fn set_ssid(mut self, ssid: &'a str) -> Self {
         self.ssid = ssid;
         self
     }
 
-    pub fn set_password(mut self, password: String) -> Self {
+    pub fn set_password(mut self, password: &'a str) -> Self {
         self.password = password;
         self
     }
@@ -34,9 +34,9 @@ impl WifiConfigBuilder {
     }
     pub fn build(self) -> ClientConfiguration {
         ClientConfiguration {
-            ssid: self.ssid.as_str().try_into().unwrap(),
-            auth_method: self.auth_method.try_into().unwrap(),
-            password: self.password.as_str().try_into().unwrap(),
+            ssid: self.ssid.try_into().unwrap_or_default(),
+            auth_method: self.auth_method.try_into().unwrap_or_default(),
+            password: self.password.try_into().unwrap_or_default(),
             ..Default::default()
         }
     }

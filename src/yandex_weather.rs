@@ -276,3 +276,52 @@ impl YandexWeatherFact {
         }
     }
 }
+pub struct YandexWeatherForestCasts<'a> {
+    today: ForestCastsData<'a>,
+    tomorrow: ForestCastsData<'a>,
+}
+pub struct ForestCastsData<'a> {
+    sun_rise: &'a str,
+    sun_set: &'a str,
+    rise_begin: &'a str,
+    set_end: &'a str,
+    parts: [CastsParts<'a>; 6],
+    hourse: [CastsHourse<'a>; 24],
+}
+pub struct CastsParts<'a> {
+    daytime: &'a str,
+    cloudness: f32,
+    condition: &'a str,
+    humidity: u32,
+    polar: bool,
+    prec_period: u32,
+    prec_strength: f32,
+    prec_type: u32,
+    temp_avg: u32,
+    temp_max: u32,
+    temp_min: u32,
+    feels_like: u32,
+    uv_index: u32,
+    wind_angle: u32,
+    wind_dir: &'a str,
+    wind_gust: u32,
+    wind_speed: f32,
+}
+pub struct CastsHourse<'a> {
+    hour: &'a str,
+    cloudness: f32,
+    condition: &'a str,
+    feels_like: u32,
+    humidity: u32,
+    is_thunder: bool,
+    prec_period: u32,
+    prec_strength: u32,
+    prec_type: u32,
+    temp: u32,
+    uv_index: u32,
+    wind_angle: u32,
+    wind_dir: &'a str,
+    wind_gust: f32,
+    wind_speed: f32,
+}
+impl YandexWeatherForestCasts {}

@@ -80,14 +80,63 @@ impl Display {
             },
         };
 
-        let timings = display.init_timings(width, heigth, hz);
-        display.init_panel_config(timings);
-        display.init_panel_handle();
-        display.init_buffer();
         display.init_i2c();
+        let timings = display.init_timings(width, heigth, hz);
         display
+            .init_panel_config(timings)
+            .init_panel_handle()
+            .init_buffer()
     }
-    fn init_buffer(&mut self) {
+    //public
+    pub fn touch_pad(&self) -> GT911 {
+        GT911::new(self.i2c.clone())
+    }
+    pub fn i2c(&self) -> Rc<RefCell<I2cDriver<'static>>> {
+        Rc::clone(&self.i2c)
+    }
+    pub fn update(&mut self) {
+        let was_redraw = self.platform.window.draw_if_needed(|render| {
+            render.render_by_line(&mut self.clone());
+        });
+        if was_redraw {
+            self.swap_buffers();
+        }
+    }
+    pub fn handle_touch_pad(&mut self) {
+        let window = self.platform.window.clone();
+        update_timers_and_animations();
+        if let Some((x, y)) = self.touch_pad().read_touch() {
+            self.status.release_counter = 0;
+            self.status.last_position = slint::LogicalPosition::new(x as f32, y as f32);
+
+            window.dispatch_event(slint::platform::WindowEvent::PointerMoved {
+                position: self.status.last_position,
+            });
+            if !self.status.touched {
+                window.dispatch_event(WindowEvent::PointerPressed {
+                    position: self.status.last_position,
+                    button: PointerEventButton::Left,
+                });
+                self.status.touched = true;
+            }
+        } else {
+            if self.status.touched {
+                self.status.release_counter += 1;
+                if self.status.release_counter >= 3 {
+                    window.dispatch_event(WindowEvent::PointerReleased {
+                        position: self.status.last_position,
+                        button: PointerEventButton::Left,
+                    });
+                    self.status.touched = false;
+                    self.status.release_counter = 0;
+                }
+            }
+        }
+        self.update();
+        FreeRtos::delay_ms(8);
+    }
+    //private
+    fn init_buffer(mut self) -> Self {
         unsafe {
             let mut fb0: *mut std::ffi::c_void = std::ptr::null_mut();
             let mut fb1: *mut std::ffi::c_void = std::ptr::null_mut();
@@ -99,6 +148,7 @@ impl Display {
             self.fb0 = fb0 as *mut u16;
             self.fb1 = fb1 as *mut u16;
         }
+        self
     }
     fn init_i2c(&mut self) {
         // CH422G
@@ -146,7 +196,7 @@ impl Display {
         timings.flags = timing_flags;
         timings
     }
-    fn init_panel_config(&mut self, timings: esp_lcd_rgb_timing_t) {
+    fn init_panel_config(mut self, timings: esp_lcd_rgb_timing_t) -> Self {
         //PanelConfig
         self.panel_config.clk_src = idf::soc_periph_lcd_clk_src_t_LCD_CLK_SRC_DEFAULT; //+
         self.panel_config.timings = timings;
@@ -195,23 +245,24 @@ impl Display {
             0,
         );
         self.panel_config.flags = panel_flags;
+        self
     }
-    fn init_panel_handle(&mut self) {
+    fn init_panel_handle(mut self) -> Self {
         unsafe {
             info!("[Cоздание новой panel_handle] ");
             match idf::esp_lcd_new_rgb_panel(&self.panel_config, &mut self.panel_handle) {
                 idf::ESP_OK => info!("✅"),
                 err => error!("❎ : {}", EspError::from(err).unwrap()),
             }
-            print!("[Инициализация panel_handle] ");
+            info!("[Инициализация panel_handle] ");
             match idf::esp_lcd_panel_init(self.panel_handle) {
                 idf::ESP_OK => info!("✅"),
                 err => error!("❎ : {}", EspError::from(err).unwrap()),
             }
         }
+        self
     }
-
-    fn get_draw_buffer(&self) -> *mut u16 {
+    fn actual_buffer(&self) -> *mut u16 {
         if self.active_fb == 0 {
             self.fb1
         } else {
@@ -219,7 +270,7 @@ impl Display {
         }
     }
     fn swap_buffers(&mut self) {
-        let draw_buf = self.get_draw_buffer();
+        let draw_buf = self.actual_buffer();
         unsafe {
             idf::esp_lcd_panel_draw_bitmap(
                 self.panel_handle,
@@ -231,65 +282,6 @@ impl Display {
             );
         }
         self.active_fb = !self.active_fb;
-    }
-
-    fn draw_buffer_ptr(&self) -> *mut u16 {
-        if self.active_fb == 0 {
-            self.fb1
-        } else {
-            self.fb0
-        }
-    }
-
-    pub fn touch_pad(&self) -> GT911 {
-        GT911::new(self.i2c.clone())
-    }
-    fn window(&self) -> Rc<MinimalSoftwareWindow> {
-        self.platform.window.clone()
-    }
-    pub fn i2c(&self) -> Rc<RefCell<I2cDriver<'static>>> {
-        Rc::clone(&self.i2c)
-    }
-    pub fn update(&mut self) {
-        let was_redraw = self.platform.window.draw_if_needed(|render| {
-            render.render_by_line(&mut self.clone());
-        });
-        if was_redraw {
-            self.swap_buffers();
-        }
-    }
-    pub fn handle_touch_pad(&mut self) {
-        let window = self.window();
-        update_timers_and_animations();
-        if let Some((x, y)) = self.touch_pad().read_touch() {
-            self.status.release_counter = 0;
-            self.status.last_position = slint::LogicalPosition::new(x as f32, y as f32);
-
-            window.dispatch_event(slint::platform::WindowEvent::PointerMoved {
-                position: self.status.last_position,
-            });
-            if !self.status.touched {
-                window.dispatch_event(WindowEvent::PointerPressed {
-                    position: self.status.last_position,
-                    button: PointerEventButton::Left,
-                });
-                self.status.touched = true;
-            }
-        } else {
-            if self.status.touched {
-                self.status.release_counter += 1;
-                if self.status.release_counter >= 3 {
-                    window.dispatch_event(WindowEvent::PointerReleased {
-                        position: self.status.last_position,
-                        button: PointerEventButton::Left,
-                    });
-                    self.status.touched = false;
-                    self.status.release_counter = 0;
-                }
-            }
-        }
-        self.update();
-        FreeRtos::delay_ms(8);
     }
 }
 
@@ -351,7 +343,7 @@ impl LineBufferProvider for &mut Display {
         render_fn: impl FnOnce(&mut [Self::TargetPixel]),
     ) {
         let offset = line * Display::WIDTH;
-        let draw_ptr = self.draw_buffer_ptr();
+        let draw_ptr = self.actual_buffer();
 
         let fb = unsafe {
             std::slice::from_raw_parts_mut(
