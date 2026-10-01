@@ -2,11 +2,8 @@ use esp_idf_hal::delay::{Delay, FreeRtos};
 use esp_idf_hal::i2c::{I2cConfig, I2cDriver};
 use esp_idf_hal::peripherals::Peripherals;
 use esp_idf_hal::units::Hertz;
-use esp_idf_svc::http::client::{Configuration, Connection, EspHttpConnection};
 use esp_idf_svc::log::EspLogger;
-use esp_idf_svc::ota::EspOta;
 use esp_idf_svc::sntp::{EspSntp, SyncStatus};
-use esp_idf_svc::sys::{ESP_ERR_IMAGE_INVALID, ESP_ERR_INVALID_RESPONSE, EspError};
 use esp_idf_svc::wifi::AuthMethod;
 use log::{error, info, warn};
 use master_display::display::Display;
@@ -19,7 +16,6 @@ use std::cell::RefCell;
 use std::net::{TcpListener, TcpStream};
 use std::rc::Rc;
 use std::thread;
-use std::time::Duration;
 fn main() {
     esp_idf_sys::link_patches();
     EspLogger::initialize_default();
@@ -123,16 +119,24 @@ fn main() {
     log_to_lcdln!("Инициализация времени...");
     let sntp = EspSntp::new_default().unwrap();
     log_to_lcdln!("Ожидание точного времени...");
+    let mut counter = 1;
     while sntp.get_sync_status() != SyncStatus::Completed {
-        log_to_lcd!("{} ");
+        log_to_lcd!(format!("{} ", counter).as_str());
         FreeRtos::delay_ms(1000);
+        if counter <= 10 {
+            counter += 1;
+        } else {
+            log_to_lcdln!("times fail...");
+            break;
+        }
     }
-    log_to_lcdln!("");
-    unsafe {
-        std::env::set_var("TZ", "MSK-3");
-        esp_idf_sys::tzset();
+    if counter <= 10 {
+        unsafe {
+            std::env::set_var("TZ", "MSK-3");
+            esp_idf_sys::tzset();
+        }
+        log_to_lcdln!("Время успешно синхронизировано!");
     }
-    log_to_lcdln!("Время успешно синхронизировано!");
     main_window.set_is_loading(false);
     //-------------------------------------------------//
     let _timer = timer_block(main_window.as_weak());

@@ -1,3 +1,5 @@
+use std::io::Error;
+
 use chrono::{Datelike, Weekday};
 use esp_idf_svc::http::{Method, client::EspHttpConnection};
 use slint::{SharedString, ToSharedString};
@@ -83,7 +85,7 @@ impl YandexWeatherFact {
         let body_str = std::str::from_utf8(&buf[..total_bytes])?;
         Ok(body_str.to_string())
     }
-    pub fn parse(string: String) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn parse(string: &String) -> Result<Self, Box<dyn std::error::Error>> {
         let parsed: JsonValue = string.parse()?;
         if let JsonValue::Object(fact) = &parsed["fact"] {
             let temp = fact
@@ -276,22 +278,248 @@ impl YandexWeatherFact {
         }
     }
 }
-pub struct YandexWeatherForestCasts<'a> {
-    today: ForestCastsData<'a>,
-    tomorrow: ForestCastsData<'a>,
+
+#[derive(Debug, Default)]
+pub struct YandexWeatherForeCasts {
+    today: ForeCastsData,
+    tomorrow: ForeCastsData,
 }
-pub struct ForestCastsData<'a> {
-    sun_rise: &'a str,
-    sun_set: &'a str,
-    rise_begin: &'a str,
-    set_end: &'a str,
-    parts: [CastsParts<'a>; 6],
-    hourse: [CastsHourse<'a>; 24],
+impl<'a> YandexWeatherForeCasts {
+    pub fn parse(
+        string: &String,
+    ) -> Result<(ForeCastsData, ForeCastsData), Box<dyn std::error::Error>> {
+        let mut answer = (ForeCastsData::default(), ForeCastsData::default());
+        let parsed_string: JsonValue = string.parse()?;
+        if let JsonValue::Array(result) = &parsed_string["forecasts"] {
+            let closer = |value: &JsonValue| match value {
+                JsonValue::Object(value) => {
+                    let daytime = value
+                        .get("daytime")
+                        .and_then(|d| match d {
+                            JsonValue::String(d) => Some(d.to_shared_string()),
+                            _ => None,
+                        })
+                        .unwrap_or("-".to_shared_string());
+                    let cloudness = value
+                        .get("cloudness")
+                        .and_then(|d| match d {
+                            JsonValue::Number(d) => Some(*d as f32),
+                            _ => None,
+                        })
+                        .unwrap_or_default();
+                    let condition = value
+                        .get("condition")
+                        .and_then(|c| match c {
+                            JsonValue::String(c) => Some(c.to_shared_string()),
+                            _ => None,
+                        })
+                        .unwrap_or("--".to_shared_string());
+                    let feels_like = value
+                        .get("feels_like")
+                        .and_then(|fl| match fl {
+                            JsonValue::Number(fl) => Some(*fl as u32),
+                            _ => None,
+                        })
+                        .unwrap_or_default();
+                    let humidity = value
+                        .get("humidity")
+                        .and_then(|fl| match fl {
+                            JsonValue::Number(fl) => Some(*fl as u32),
+                            _ => None,
+                        })
+                        .unwrap_or_default();
+                    let polar = value
+                        .get("polar")
+                        .and_then(|fl| match fl {
+                            JsonValue::Boolean(fl) => Some(*fl),
+                            _ => None,
+                        })
+                        .unwrap_or_default();
+                    let prec_period = value
+                        .get("prec_period")
+                        .and_then(|pp| match pp {
+                            JsonValue::Number(pp) => Some(*pp as u32),
+                            _ => None,
+                        })
+                        .unwrap_or_default();
+                    let prec_strength = value
+                        .get("prec_strength")
+                        .and_then(|ps| match ps {
+                            JsonValue::Number(ps) => Some(*ps as f32),
+                            _ => None,
+                        })
+                        .unwrap_or_default();
+                    let prec_type = value
+                        .get("prec_type")
+                        .and_then(|ps| match ps {
+                            JsonValue::Number(ps) => Some(*ps as u32),
+                            _ => None,
+                        })
+                        .unwrap_or_default();
+                    let temp_avg = value
+                        .get("temp_avg")
+                        .and_then(|ta| match ta {
+                            JsonValue::Number(ta) => Some(*ta as u32),
+                            _ => None,
+                        })
+                        .unwrap_or_default();
+                    let temp_max = value
+                        .get("temp_max")
+                        .and_then(|tm| match tm {
+                            JsonValue::Number(tm) => Some(*tm as u32),
+                            _ => None,
+                        })
+                        .unwrap_or_default();
+                    let temp_min = value
+                        .get("temp_min")
+                        .and_then(|tm| match tm {
+                            JsonValue::Number(tm) => Some(*tm as u32),
+                            _ => None,
+                        })
+                        .unwrap_or_default();
+                    let uv_index = value
+                        .get("uv_index")
+                        .and_then(|tm| match tm {
+                            JsonValue::Number(tm) => Some(*tm as u32),
+                            _ => None,
+                        })
+                        .unwrap_or_default();
+                    let wind_angle = value
+                        .get("wind_angle")
+                        .and_then(|wa| match wa {
+                            JsonValue::Number(wa) => Some(*wa as u32),
+                            _ => None,
+                        })
+                        .unwrap_or_default();
+                    let wind_dir = value
+                        .get("wind_dir")
+                        .and_then(|wd| match wd {
+                            JsonValue::String(wd) => Some(wd.to_shared_string()),
+                            _ => None,
+                        })
+                        .unwrap_or("--".to_shared_string());
+                    let wind_gust = value
+                        .get("wind_gust")
+                        .and_then(|wg| match wg {
+                            JsonValue::Number(wg) => Some(*wg as u32),
+                            _ => None,
+                        })
+                        .unwrap_or_default();
+                    let wind_speed = value
+                        .get("wind_speed")
+                        .and_then(|ws| match ws {
+                            JsonValue::Number(ws) => Some(*ws as f32),
+                            _ => None,
+                        })
+                        .unwrap_or_default();
+                    Some(CastsParts {
+                        cloudness,
+                        condition,
+                        daytime,
+                        feels_like,
+                        humidity,
+                        polar,
+                        prec_period,
+                        prec_strength,
+                        prec_type,
+                        temp_avg,
+                        temp_max,
+                        temp_min,
+                        uv_index,
+                        wind_angle,
+                        wind_dir,
+                        wind_gust,
+                        wind_speed,
+                    })
+                }
+                _ => None,
+            };
+            if let JsonValue::Object(today_element) = &result[0] {
+                let sun_rise = today_element
+                    .get("sunrise")
+                    .and_then(|v| match v {
+                        JsonValue::String(v) => Some(v.to_shared_string()),
+                        _ => None,
+                    })
+                    .unwrap_or("--:--".to_shared_string());
+                let sun_set = today_element
+                    .get("sunset")
+                    .and_then(|v| match v {
+                        JsonValue::String(v) => Some(v.to_shared_string()),
+                        _ => None,
+                    })
+                    .unwrap_or("--:--".to_shared_string());
+                let rise_begin = today_element
+                    .get("rise_begin")
+                    .and_then(|v| match v {
+                        JsonValue::String(v) => Some(v.to_shared_string()),
+                        _ => None,
+                    })
+                    .unwrap_or("--:--".to_shared_string());
+                let set_end = today_element
+                    .get("set_end")
+                    .and_then(|v| match v {
+                        JsonValue::String(v) => Some(v.to_shared_string()),
+                        _ => None,
+                    })
+                    .unwrap_or("--:--".to_shared_string());
+                let parts = today_element
+                    .get("parts")
+                    .and_then(|v| match v {
+                        JsonValue::Object(v) => {
+                            let mut parts = CastsPartsData::default();
+                            parts.day = v.get("day").and_then(closer).unwrap_or_default();
+                            parts.day_short =
+                                v.get("day_short").and_then(closer).unwrap_or_default();
+                            parts.evening = v.get("evening").and_then(closer).unwrap_or_default();
+                            parts.morning = v.get("morning").and_then(closer).unwrap_or_default();
+                            parts.night = v.get("night").and_then(closer).unwrap_or_default();
+                            parts.night_short =
+                                v.get("night_short").and_then(closer).unwrap_or_default();
+                            Some(parts)
+                        }
+                        _ => None,
+                    })
+                    .unwrap_or_default();
+                answer.0 = ForeCastsData {
+                    rise_begin,
+                    set_end,
+                    sun_rise,
+                    sun_set,
+                    parts,
+                    ..Default::default()
+                };
+            }
+            // let tomorrow = &result[1];
+            return Ok(answer);
+        }
+        Err("[Error]: Parse failed.".into())
+    }
 }
-pub struct CastsParts<'a> {
-    daytime: &'a str,
+
+#[derive(Debug, Default)]
+pub struct ForeCastsData {
+    sun_rise: SharedString,
+    sun_set: SharedString,
+    rise_begin: SharedString,
+    set_end: SharedString,
+    parts: CastsPartsData,
+    hourse: Vec<CastsHourse>,
+}
+#[derive(Debug, Default)]
+pub struct CastsPartsData {
+    day: CastsParts,
+    day_short: CastsParts,
+    evening: CastsParts,
+    morning: CastsParts,
+    night: CastsParts,
+    night_short: CastsParts,
+}
+#[derive(Debug, Default)]
+pub struct CastsParts {
+    daytime: SharedString,
     cloudness: f32,
-    condition: &'a str,
+    condition: SharedString,
     humidity: u32,
     polar: bool,
     prec_period: u32,
@@ -303,14 +531,16 @@ pub struct CastsParts<'a> {
     feels_like: u32,
     uv_index: u32,
     wind_angle: u32,
-    wind_dir: &'a str,
+    wind_dir: SharedString,
     wind_gust: u32,
     wind_speed: f32,
 }
-pub struct CastsHourse<'a> {
-    hour: &'a str,
+
+#[derive(Debug, Default)]
+pub struct CastsHourse {
+    hour: SharedString,
     cloudness: f32,
-    condition: &'a str,
+    condition: SharedString,
     feels_like: u32,
     humidity: u32,
     is_thunder: bool,
@@ -320,8 +550,7 @@ pub struct CastsHourse<'a> {
     temp: u32,
     uv_index: u32,
     wind_angle: u32,
-    wind_dir: &'a str,
+    wind_dir: SharedString,
     wind_gust: f32,
     wind_speed: f32,
 }
-impl YandexWeatherForestCasts {}
