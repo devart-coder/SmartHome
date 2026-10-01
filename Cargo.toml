@@ -19,7 +19,6 @@ slint = { version = "1.9", default-features = false, features = ["compat-1-2", "
 bmp180-driver = "0.1.1"
 chrono = "0.4.45"
 tinyjson = "2.5.1"
-# mqttrust = "0.6.0"
 mqttrs = "0.4.1"
 
 
@@ -35,6 +34,7 @@ debug = 1             # Оставляем базовую отладку для 
 # codegen-units = 1     # LLVM can perform better optimizations using a single thread
 # debug         = 2     # prefer slower builds but better debugging experience
 # lto           = 'fat'
+panic = "abort"
 opt-level     = "s"
 
 [build-dependencies]
