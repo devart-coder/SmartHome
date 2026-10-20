@@ -3,19 +3,28 @@ use esp_idf_hal::i2c::{I2cConfig, I2cDriver};
 use esp_idf_hal::peripherals::Peripherals;
 use esp_idf_hal::units::Hertz;
 use esp_idf_svc::log::EspLogger;
+use esp_idf_svc::mqtt::client::{
+    EspAsyncMqttClient, EspMqttClient, EspMqttConnection, EventPayload, MqttClientConfiguration,
+    QoS,
+};
 use esp_idf_svc::sntp::{EspSntp, SyncStatus};
 use esp_idf_svc::wifi::AuthMethod;
 use log::{error, info, warn};
 use master_display::display::Display;
-use master_display::ui::{MainWindow, WeatherFact};
+use master_display::security::{BROKER_URL, LightSubscriptions, PASSWORD, SDDI};
+use master_display::ui::{LightObject, MainWindow, WeatherFact};
 use master_display::wifi::Wifi;
-use master_display::{Handler, bmp_block, timer_block, yandex_weather_block};
+use master_display::{bmp_block, timer_block, yandex_weather_block};
 use slint::platform::update_timers_and_animations;
-use slint::{ComponentHandle, SharedString, Timer};
+use slint::{
+    ComponentHandle, Model, ModelExt, SharedString, Timer, VecModel, invoke_from_event_loop,
+};
 use std::cell::RefCell;
 use std::net::{TcpListener, TcpStream};
 use std::rc::Rc;
-use std::thread;
+use std::sync::{Arc, Mutex};
+use std::thread::{self, spawn};
+use std::time::Duration;
 fn main() {
     esp_idf_sys::link_patches();
     EspLogger::initialize_default();
@@ -42,6 +51,7 @@ fn main() {
     };
     main_window.set_is_loading(true);
     FreeRtos::delay_ms(100);
+    //-------------------------------------------------//
     macro_rules! log_to_lcdln {
         ($msg:expr) => {
             info!("{}", $msg);
@@ -70,8 +80,8 @@ fn main() {
     log_to_lcdln!("Инициализация Wi-Fi...");
     let mut wifi = Wifi::new(p.modem);
     wifi.init_config(|b| {
-        b.set_ssid("TP-Link_D88D")
-            .set_password("14236679")
+        b.set_ssid(SDDI)
+            .set_password(PASSWORD)
             .set_auth_method(AuthMethod::WPA2Personal)
     });
     wifi.show_connection(|w| {
@@ -135,29 +145,334 @@ fn main() {
             std::env::set_var("TZ", "MSK-3");
             esp_idf_sys::tzset();
         }
-        log_to_lcdln!("Время успешно синхронизировано!");
+        log_to_lcdln!("\nВремя успешно синхронизировано!");
     }
     main_window.set_is_loading(false);
+    display.update();
     //-------------------------------------------------//
     let _timer = timer_block(main_window.as_weak());
     let _timer_bmp = bmp_block(main_window.as_weak(), i2c_driver);
-    let _yandex_timer = yandex_weather_block(main_window.as_weak());
-    let ui_weak = main_window.as_weak();
-    thread::spawn(move || {
-        let listener = TcpListener::bind("0.0.0.0:1883").unwrap();
-        info!("MQTT Сервер успешно запущен на ESP32 и слушает порт 1883...");
-        for stream in listener.incoming() {
-            match stream {
-                Ok(socket) => {
-                    let ui_for_client = ui_weak.clone();
-                    thread::spawn(move || {
-                        let h = Handler::new();
-                        if let Err(e) = h.handle_client(socket, ui_for_client.clone()) {
-                            error!("Сессия завершена с ошибкой: {:?}", e);
+    //-------------------------------------------------//
+    let (client, mut connection) = EspMqttClient::new(
+        BROKER_URL,
+        &MqttClientConfiguration {
+            client_id: Some("Display_7'"),
+            keep_alive_interval: Some(Duration::from_secs(60)),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let client_guard = Arc::new(Mutex::new(client));
+    let c = client_guard.clone();
+    std::thread::spawn(move || {
+        info!("Фоновый поток MQTT запущен, ожидание событий...");
+        while let Ok(event) = connection.next() {
+            match event.payload() {
+                EventPayload::Connected(_) => {
+                    info!("Успешно подключились к MQTT-брокеру!");
+                    let c = c.clone();
+                    let subscribe = move || {
+                        let mut cc = c.lock().unwrap();
+                        match cc.subscribe(
+                            LightSubscriptions::ControllRoom.path().as_str(),
+                            QoS::AtLeastOnce,
+                        ) {
+                            Err(e) => error!("Не удалось подписаться на топик: {:?}", e),
+                            Ok(_) => {
+                                info!(
+                                    "Успешная подписка на топик: smart_home/light_controll/controll_center"
+                                );
+                            }
                         }
-                    });
+                        match cc.subscribe(
+                            (LightSubscriptions::ControllRoom.path() + "/light_ownership").as_str(),
+                            QoS::AtLeastOnce,
+                        ) {
+                            Err(e) => error!("Не удалось подписаться на топик: {:?}", e),
+                            Ok(_) => {
+                                info!(
+                                    "Успешная подписка на топик: smart_home/light_controll/controll_center/ownership"
+                                );
+                            }
+                        }
+                        match cc.subscribe(
+                            LightSubscriptions::Restroom.path().as_str(),
+                            QoS::AtLeastOnce,
+                        ) {
+                            Err(e) => error!("Не удалось подписаться на топик: {:?}", e),
+                            Ok(_) => {
+                                info!(
+                                    "Успешная подписка на топик: smart_home/light_controll/restroom"
+                                );
+                            }
+                        }
+                        match cc.subscribe(
+                            (LightSubscriptions::Restroom.path() + "/light_ownership").as_str(),
+                            QoS::AtLeastOnce,
+                        ) {
+                            Err(e) => error!("Не удалось подписаться на топик: {:?}", e),
+                            Ok(_) => {
+                                info!(
+                                    "Успешная подписка на топик: smart_home/light_controll/restroom"
+                                );
+                            }
+                        }
+                        match cc.subscribe(
+                            LightSubscriptions::Bathroom.path().as_str(),
+                            QoS::AtLeastOnce,
+                        ) {
+                            Err(e) => error!("Не удалось подписаться на топик: {:?}", e),
+                            Ok(_) => {
+                                info!(
+                                    "Успешная подписка на топик: smart_home/light_controll/bathroom"
+                                );
+                            }
+                        }
+                        match cc.subscribe(
+                            (LightSubscriptions::Bathroom.path() + "/light_ownership").as_str(),
+                            QoS::AtLeastOnce,
+                        ) {
+                            Err(e) => error!("Не удалось подписаться на топик: {:?}", e),
+                            Ok(_) => {
+                                info!(
+                                    "Успешная подписка на топик: smart_home/light_controll/bathroom"
+                                );
+                            }
+                        }
+                        match cc.subscribe(
+                            LightSubscriptions::Breakroom.path().as_str(),
+                            QoS::AtLeastOnce,
+                        ) {
+                            Err(e) => error!("Не удалось подписаться на топик: {:?}", e),
+                            Ok(_) => {
+                                info!(
+                                    "Успешная подписка на топик: smart_home/light_controll/breakroom"
+                                );
+                            }
+                        }
+                        match cc.subscribe(
+                            (LightSubscriptions::Breakroom.path() + "/light_ownership").as_str(),
+                            QoS::AtLeastOnce,
+                        ) {
+                            Err(e) => error!("Не удалось подписаться на топик: {:?}", e),
+                            Ok(_) => {
+                                info!(
+                                    "Успешная подписка на топик: smart_home/light_controll/breakroom"
+                                );
+                            }
+                        }
+                    };
+                    thread::spawn(subscribe);
                 }
-                Err(e) => error!("TCP Error: {:?}", e),
+                EventPayload::Disconnected => {
+                    warn!("Потеряно соединение с MQTT-брокером. Переподключение...");
+                }
+                EventPayload::Error(e) => {
+                    log::error!("Error: {}", e.to_string())
+                }
+                _ => {}
+            }
+        }
+    });
+    let c = client_guard.clone();
+    main_window.on_g2_status(move |name, status| {
+        info!("Name : {} Status:{}", name, status);
+        if name == LightSubscriptions::ControllRoom.name() {
+            if status == true {
+                c.lock()
+                    .unwrap()
+                    .publish(
+                        LightSubscriptions::ControllRoom.path().as_str(),
+                        QoS::AtLeastOnce,
+                        true,
+                        b"on",
+                    )
+                    .unwrap();
+            } else {
+                c.lock()
+                    .unwrap()
+                    .publish(
+                        LightSubscriptions::ControllRoom.path().as_str(),
+                        QoS::AtLeastOnce,
+                        true,
+                        b"off",
+                    )
+                    .unwrap();
+            }
+        } else if name == LightSubscriptions::Restroom.name() {
+            if status == true {
+                c.lock()
+                    .unwrap()
+                    .publish(
+                        LightSubscriptions::Restroom.path().as_str(),
+                        QoS::AtLeastOnce,
+                        true,
+                        b"on",
+                    )
+                    .unwrap();
+            } else {
+                c.lock()
+                    .unwrap()
+                    .publish(
+                        LightSubscriptions::Restroom.path().as_str(),
+                        QoS::AtLeastOnce,
+                        true,
+                        b"off",
+                    )
+                    .unwrap();
+            }
+        } else if name == LightSubscriptions::Bathroom.name() {
+            if status == true {
+                c.lock()
+                    .unwrap()
+                    .publish(
+                        LightSubscriptions::Bathroom.path().as_str(),
+                        QoS::AtLeastOnce,
+                        true,
+                        b"on",
+                    )
+                    .unwrap();
+            } else {
+                c.lock()
+                    .unwrap()
+                    .publish(
+                        LightSubscriptions::Bathroom.path().as_str(),
+                        QoS::AtLeastOnce,
+                        true,
+                        b"off",
+                    )
+                    .unwrap();
+            }
+        } else if name == LightSubscriptions::Breakroom.name() {
+            if status == true {
+                c.lock()
+                    .unwrap()
+                    .publish(
+                        LightSubscriptions::Breakroom.path().as_str(),
+                        QoS::AtLeastOnce,
+                        true,
+                        b"on",
+                    )
+                    .unwrap();
+            } else {
+                c.lock()
+                    .unwrap()
+                    .publish(
+                        LightSubscriptions::Breakroom.path().as_str(),
+                        QoS::AtLeastOnce,
+                        true,
+                        b"off",
+                    )
+                    .unwrap();
+            }
+        }
+    });
+    let c = client_guard.clone();
+    main_window.on_g2_ownership(move |name, ownership| {
+        info!("Name : {} Ownership:{}", name, ownership);
+        if name == LightSubscriptions::ControllRoom.name() {
+            if ownership == true {
+                c.lock()
+                    .unwrap()
+                    .publish(
+                        LightSubscriptions::ControllRoom
+                            .with_ownership_suffix()
+                            .as_str(),
+                        QoS::AtLeastOnce,
+                        true,
+                        b"on",
+                    )
+                    .unwrap();
+            } else {
+                c.lock()
+                    .unwrap()
+                    .publish(
+                        LightSubscriptions::ControllRoom
+                            .with_ownership_suffix()
+                            .as_str(),
+                        QoS::AtLeastOnce,
+                        true,
+                        b"off",
+                    )
+                    .unwrap();
+            }
+        } else if name == LightSubscriptions::Restroom.name() {
+            if ownership == true {
+                c.lock()
+                    .unwrap()
+                    .publish(
+                        LightSubscriptions::Restroom
+                            .with_ownership_suffix()
+                            .as_str(),
+                        QoS::AtLeastOnce,
+                        true,
+                        b"on",
+                    )
+                    .unwrap();
+            } else {
+                c.lock()
+                    .unwrap()
+                    .publish(
+                        LightSubscriptions::Restroom
+                            .with_ownership_suffix()
+                            .as_str(),
+                        QoS::AtLeastOnce,
+                        true,
+                        b"off",
+                    )
+                    .unwrap();
+            }
+        } else if name == LightSubscriptions::Bathroom.name() {
+            if ownership == true {
+                c.lock()
+                    .unwrap()
+                    .publish(
+                        LightSubscriptions::Bathroom
+                            .with_ownership_suffix()
+                            .as_str(),
+                        QoS::AtLeastOnce,
+                        true,
+                        b"on",
+                    )
+                    .unwrap();
+            } else {
+                c.lock()
+                    .unwrap()
+                    .publish(
+                        LightSubscriptions::Bathroom
+                            .with_ownership_suffix()
+                            .as_str(),
+                        QoS::AtLeastOnce,
+                        true,
+                        b"off",
+                    )
+                    .unwrap();
+            }
+        } else if name == LightSubscriptions::Breakroom.name() {
+            if ownership == true {
+                c.lock()
+                    .unwrap()
+                    .publish(
+                        LightSubscriptions::Breakroom
+                            .with_ownership_suffix()
+                            .as_str(),
+                        QoS::AtLeastOnce,
+                        true,
+                        b"on",
+                    )
+                    .unwrap();
+            } else {
+                c.lock()
+                    .unwrap()
+                    .publish(
+                        LightSubscriptions::Breakroom
+                            .with_ownership_suffix()
+                            .as_str(),
+                        QoS::AtLeastOnce,
+                        true,
+                        b"off",
+                    )
+                    .unwrap();
             }
         }
     });

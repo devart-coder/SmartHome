@@ -2,6 +2,7 @@ use std::io::Error;
 
 use chrono::{Datelike, Weekday};
 use esp_idf_svc::http::{Method, client::EspHttpConnection};
+use log::info;
 use slint::{SharedString, ToSharedString};
 use tinyjson::JsonValue;
 
@@ -56,7 +57,7 @@ impl YandexWeatherFact {
         lon: &str,
     ) -> Result<String, Box<dyn std::error::Error>> {
         let url = format!(
-            "https://api.weather.yandex.ru/v2/forecast?lat={}&lon={}&lang=ru_RU&hours=false&limit=1&extra=false",
+            "https://api.weather.yandex.ru/v2/forecast?lat={}&lon={}&lang=ru_RU&hours=false&extra=false",
             lat, lon
         );
         let headers = [
@@ -72,7 +73,7 @@ impl YandexWeatherFact {
         }
 
         // 4. Считываем данные в буфер
-        let mut buf = [0u8; 32768];
+        let mut buf = vec![0u8; 32768];
         let mut total_bytes = 0;
 
         while let Ok(bytes_read) = client.read(&mut buf[total_bytes..]) {
@@ -290,7 +291,9 @@ impl<'a> YandexWeatherForeCasts {
     ) -> Result<(ForeCastsData, ForeCastsData), Box<dyn std::error::Error>> {
         let mut answer = (ForeCastsData::default(), ForeCastsData::default());
         let parsed_string: JsonValue = string.parse()?;
+        println!("{:#?}", parsed_string);
         if let JsonValue::Array(result) = &parsed_string["forecasts"] {
+            info!("forecasts_len: {}", result.len());
             let closer = |value: &JsonValue| match value {
                 JsonValue::Object(value) => {
                     let daytime = value
@@ -490,7 +493,62 @@ impl<'a> YandexWeatherForeCasts {
                     ..Default::default()
                 };
             }
-            // let tomorrow = &result[1];
+            if let JsonValue::Object(tomorrow_element) = &result[1] {
+                let sun_rise = tomorrow_element
+                    .get("sunrise")
+                    .and_then(|v| match v {
+                        JsonValue::String(v) => Some(v.to_shared_string()),
+                        _ => None,
+                    })
+                    .unwrap_or("--:--".to_shared_string());
+                let sun_set = tomorrow_element
+                    .get("sunset")
+                    .and_then(|v| match v {
+                        JsonValue::String(v) => Some(v.to_shared_string()),
+                        _ => None,
+                    })
+                    .unwrap_or("--:--".to_shared_string());
+                let rise_begin = tomorrow_element
+                    .get("rise_begin")
+                    .and_then(|v| match v {
+                        JsonValue::String(v) => Some(v.to_shared_string()),
+                        _ => None,
+                    })
+                    .unwrap_or("--:--".to_shared_string());
+                let set_end = tomorrow_element
+                    .get("set_end")
+                    .and_then(|v| match v {
+                        JsonValue::String(v) => Some(v.to_shared_string()),
+                        _ => None,
+                    })
+                    .unwrap_or("--:--".to_shared_string());
+                let parts = tomorrow_element
+                    .get("parts")
+                    .and_then(|v| match v {
+                        JsonValue::Object(v) => {
+                            let mut parts = CastsPartsData::default();
+                            parts.day = v.get("day").and_then(closer).unwrap_or_default();
+                            parts.day_short =
+                                v.get("day_short").and_then(closer).unwrap_or_default();
+                            parts.evening = v.get("evening").and_then(closer).unwrap_or_default();
+                            parts.morning = v.get("morning").and_then(closer).unwrap_or_default();
+                            parts.night = v.get("night").and_then(closer).unwrap_or_default();
+                            parts.night_short =
+                                v.get("night_short").and_then(closer).unwrap_or_default();
+                            Some(parts)
+                        }
+                        _ => None,
+                    })
+                    .unwrap_or_default();
+                answer.1 = ForeCastsData {
+                    rise_begin,
+                    set_end,
+                    sun_rise,
+                    sun_set,
+                    parts,
+                    ..Default::default()
+                };
+            }
             return Ok(answer);
         }
         Err("[Error]: Parse failed.".into())
@@ -499,40 +557,70 @@ impl<'a> YandexWeatherForeCasts {
 
 #[derive(Debug, Default)]
 pub struct ForeCastsData {
-    sun_rise: SharedString,
-    sun_set: SharedString,
+    //Время начала восхода Солнца,
     rise_begin: SharedString,
+    //Время окончания восхода Солнца
+    sun_rise: SharedString,
+    //Время начала заката Солнца
+    sun_set: SharedString,
+    //Время окончания заката Солнца
     set_end: SharedString,
+    //Прогнозы по времени суток и 12-часовые прогнозы.
     parts: CastsPartsData,
+    //
     hourse: Vec<CastsHourse>,
 }
+
 #[derive(Debug, Default)]
 pub struct CastsPartsData {
+    //прогноз на день
     day: CastsParts,
+    //12-часовой прогноз на день.
     day_short: CastsParts,
+    //прогноз на вечер.
     evening: CastsParts,
+    //прогноз на утро
     morning: CastsParts,
+    //прогноз на ночь
     night: CastsParts,
+    //прогноз на ночь, для которого исключены поля temp_min и temp_max,
+    //в поле temp указывается минимальная температура за ночной период.
     night_short: CastsParts,
 }
+
 #[derive(Debug, Default)]
 pub struct CastsParts {
+    // Светлое или темное время суток.
     daytime: SharedString,
+    // Облачность
     cloudness: f32,
+    // Код расшифровки погодного описания
     condition: SharedString,
+    // Влажность воздуха (в процентах).
     humidity: u32,
+    // Признак того, что время суток, указанное в поле daytime, является полярным.
     polar: bool,
+    // Прогнозируемый период осадков (в минутах).
     prec_period: u32,
+    // Сила осадков.
     prec_strength: f32,
+    // Тип осадков.
     prec_type: u32,
+    // Средняя температура для времени суток (°C).
     temp_avg: u32,
+    //Максимальная температура для времени суток (°C).
     temp_max: u32,
+    //Минимальная температура для времени суток (°C).
     temp_min: u32,
+    // Ощущаемая температура (°C).
     feels_like: u32,
     uv_index: u32,
     wind_angle: u32,
+    // Направление ветра.
     wind_dir: SharedString,
+    // Скорость порывов ветра (в м/с).
     wind_gust: u32,
+    // Скорость ветра (в м/с).
     wind_speed: f32,
 }
 

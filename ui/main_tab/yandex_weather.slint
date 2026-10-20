@@ -270,26 +270,5 @@ export component YandexWeatherFact inherits Rectangle{
                 Rectangle {}
             }
         }
-        out property <int> total_secs: 45*60;
-        Timer {
-            interval: 1s;
-            running: true ;
-            triggered() => {
-                if (total_secs > 0) {
-                    total_secs -= 1;
-                } else {
-                    total_secs = 45*60;
-                }
-            }
-        }
-        pure function format_num(num: int) -> string {
-            return num < 10 ? "0" + num : "" + num;
-        }
-        Text {
-            text: "Update " + format_num(floor(total_secs / 60)) + ":" + format_num(mod(total_secs, 60));
-            font-size: 16px;
-            horizontal-alignment: center;
-            color:white;
-        }
     }
 }

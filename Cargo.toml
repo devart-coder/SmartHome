@@ -20,6 +20,7 @@ bmp180-driver = "0.1.1"
 chrono = "0.4.45"
 tinyjson = "2.5.1"
 mqttrs = "0.4.1"
+# futures = "0.3.34"
 
 
 [profile.dev]

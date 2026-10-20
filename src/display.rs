@@ -35,6 +35,7 @@ pub struct Display {
     platform: DisplayPlatform,
     status: TouchPadStatus,
 }
+unsafe impl Send for Display {}
 #[derive(Clone, Debug)]
 struct TouchPadStatus {
     touched: bool,

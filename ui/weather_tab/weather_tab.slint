@@ -1,0 +1,19 @@
+export component WeatherTab inherits Rectangle{
+    background: black;
+    GridLayout {
+        spacing: 10px;
+        padding: 10px;
+        Row{
+            for index in [0,1,2,3,4,5] : Rectangle {
+                border-radius: 10px;
+                background: darkgray;
+            }
+        }
+        Row{
+            for index in [6,7,8,9,10,11] : Rectangle {
+                border-radius: 10px;
+                background: darkgray;
+            }
+        }
+    }
+}
