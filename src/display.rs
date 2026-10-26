@@ -5,10 +5,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use embedded_graphics::{
-    pixelcolor::Rgb565,
-    prelude::{OriginDimensions, RgbColor, Size},
-};
+use embedded_graphics::prelude::{OriginDimensions, Size};
 use esp_idf_hal::{delay::FreeRtos, i2c::I2cDriver};
 use esp_idf_sys::{
     self as idf, EspError, esp_lcd_panel_handle_t, esp_lcd_rgb_panel_config_t, esp_lcd_rgb_timing_t,

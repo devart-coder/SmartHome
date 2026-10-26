@@ -7,20 +7,12 @@ use bmp180_driver::BMP180;
 use chrono::Local;
 use esp_idf_hal::i2c::I2cDriver;
 use esp_idf_svc::http::client::{Configuration, EspHttpConnection};
-use log::{info, warn};
-use mqttrs::{Connack, ConnectReturnCode, Packet, Publish, QoS};
-use slint::{ComponentHandle, ToSharedString, Weak};
-use slint::{Model, SharedString, Timer};
+use slint::{ToSharedString, Weak};
+use slint::Timer;
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::{
-    collections::HashMap,
-    io::{Read, Write},
-    net::TcpStream,
-    time::Duration,
-};
+use std::time::Duration;
 
-use crate::ui::LightObject;
 use crate::yandex_weather::YandexWeatherForeCasts;
 pub mod ui {
     slint::include_modules!();
@@ -128,7 +120,7 @@ pub fn yandex_weather_block(ui: Weak<MainWindow>) -> Timer {
                             }
                             match YandexWeatherForeCasts::parse(&result) {
                                 Ok(v) => {
-                                    let (today, tomorrow) = v;
+                                    let (_today, _tomorrow) = v;
                                     // println!("{:#?}", today);
                                     // println!("{:#?}", tomorrow);
                                 }

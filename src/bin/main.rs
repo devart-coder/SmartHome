@@ -1,29 +1,24 @@
-use esp_idf_hal::delay::{Delay, FreeRtos};
+use esp_idf_hal::delay::FreeRtos;
 use esp_idf_hal::i2c::{I2cConfig, I2cDriver};
 use esp_idf_hal::peripherals::Peripherals;
 use esp_idf_hal::units::Hertz;
 use esp_idf_svc::log::EspLogger;
-use esp_idf_svc::mqtt::client::{
-    EspAsyncMqttClient, EspMqttClient, EspMqttConnection, EventPayload, MqttClientConfiguration,
-    QoS,
-};
+use esp_idf_svc::mqtt::client::{EspMqttClient, EventPayload, MqttClientConfiguration, QoS};
 use esp_idf_svc::sntp::{EspSntp, SyncStatus};
 use esp_idf_svc::wifi::AuthMethod;
 use log::{error, info, warn};
 use master_display::display::Display;
 use master_display::security::{BROKER_URL, LightSubscriptions, PASSWORD, SDDI};
-use master_display::ui::{LightObject, MainWindow, WeatherFact};
+use master_display::ui::MainWindow;
 use master_display::wifi::Wifi;
-use master_display::{bmp_block, timer_block, yandex_weather_block};
+use master_display::{bmp_block, timer_block};
+use slint::ComponentHandle;
 use slint::platform::update_timers_and_animations;
-use slint::{
-    ComponentHandle, Model, ModelExt, SharedString, Timer, VecModel, invoke_from_event_loop,
-};
 use std::cell::RefCell;
-use std::net::{TcpListener, TcpStream};
 use std::rc::Rc;
+use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex};
-use std::thread::{self, spawn};
+use std::thread::{self};
 use std::time::Duration;
 fn main() {
     esp_idf_sys::link_patches();
@@ -153,6 +148,13 @@ fn main() {
     let _timer = timer_block(main_window.as_weak());
     let _timer_bmp = bmp_block(main_window.as_weak(), i2c_driver);
     //-------------------------------------------------//
+    let ui = main_window.as_weak();
+    let (tx, rx) = channel::<&str>();
+    if let Err(e) = tx.send("connecting") {
+        error!("[SendError]: {}", e);
+    }
+    let mrx = Arc::new(Mutex::new(rx));
+    let _mrx_clone = mrx.clone();
     let (client, mut connection) = EspMqttClient::new(
         BROKER_URL,
         &MqttClientConfiguration {
@@ -163,109 +165,21 @@ fn main() {
     )
     .unwrap();
     let client_guard = Arc::new(Mutex::new(client));
-    let c = client_guard.clone();
     std::thread::spawn(move || {
         info!("Фоновый поток MQTT запущен, ожидание событий...");
         while let Ok(event) = connection.next() {
             match event.payload() {
                 EventPayload::Connected(_) => {
                     info!("Успешно подключились к MQTT-брокеру!");
-                    let c = c.clone();
-                    let subscribe = move || {
-                        let mut cc = c.lock().unwrap();
-                        match cc.subscribe(
-                            LightSubscriptions::ControllRoom.path().as_str(),
-                            QoS::AtLeastOnce,
-                        ) {
-                            Err(e) => error!("Не удалось подписаться на топик: {:?}", e),
-                            Ok(_) => {
-                                info!(
-                                    "Успешная подписка на топик: smart_home/light_controll/controll_center"
-                                );
-                            }
-                        }
-                        match cc.subscribe(
-                            (LightSubscriptions::ControllRoom.path() + "/light_ownership").as_str(),
-                            QoS::AtLeastOnce,
-                        ) {
-                            Err(e) => error!("Не удалось подписаться на топик: {:?}", e),
-                            Ok(_) => {
-                                info!(
-                                    "Успешная подписка на топик: smart_home/light_controll/controll_center/ownership"
-                                );
-                            }
-                        }
-                        match cc.subscribe(
-                            LightSubscriptions::Restroom.path().as_str(),
-                            QoS::AtLeastOnce,
-                        ) {
-                            Err(e) => error!("Не удалось подписаться на топик: {:?}", e),
-                            Ok(_) => {
-                                info!(
-                                    "Успешная подписка на топик: smart_home/light_controll/restroom"
-                                );
-                            }
-                        }
-                        match cc.subscribe(
-                            (LightSubscriptions::Restroom.path() + "/light_ownership").as_str(),
-                            QoS::AtLeastOnce,
-                        ) {
-                            Err(e) => error!("Не удалось подписаться на топик: {:?}", e),
-                            Ok(_) => {
-                                info!(
-                                    "Успешная подписка на топик: smart_home/light_controll/restroom"
-                                );
-                            }
-                        }
-                        match cc.subscribe(
-                            LightSubscriptions::Bathroom.path().as_str(),
-                            QoS::AtLeastOnce,
-                        ) {
-                            Err(e) => error!("Не удалось подписаться на топик: {:?}", e),
-                            Ok(_) => {
-                                info!(
-                                    "Успешная подписка на топик: smart_home/light_controll/bathroom"
-                                );
-                            }
-                        }
-                        match cc.subscribe(
-                            (LightSubscriptions::Bathroom.path() + "/light_ownership").as_str(),
-                            QoS::AtLeastOnce,
-                        ) {
-                            Err(e) => error!("Не удалось подписаться на топик: {:?}", e),
-                            Ok(_) => {
-                                info!(
-                                    "Успешная подписка на топик: smart_home/light_controll/bathroom"
-                                );
-                            }
-                        }
-                        match cc.subscribe(
-                            LightSubscriptions::Breakroom.path().as_str(),
-                            QoS::AtLeastOnce,
-                        ) {
-                            Err(e) => error!("Не удалось подписаться на топик: {:?}", e),
-                            Ok(_) => {
-                                info!(
-                                    "Успешная подписка на топик: smart_home/light_controll/breakroom"
-                                );
-                            }
-                        }
-                        match cc.subscribe(
-                            (LightSubscriptions::Breakroom.path() + "/light_ownership").as_str(),
-                            QoS::AtLeastOnce,
-                        ) {
-                            Err(e) => error!("Не удалось подписаться на топик: {:?}", e),
-                            Ok(_) => {
-                                info!(
-                                    "Успешная подписка на топик: smart_home/light_controll/breakroom"
-                                );
-                            }
-                        }
-                    };
-                    thread::spawn(subscribe);
+                    if let Err(e) = tx.send("connected") {
+                        error!("[SendError]: {}", e);
+                    }
                 }
                 EventPayload::Disconnected => {
                     warn!("Потеряно соединение с MQTT-брокером. Переподключение...");
+                    if let Err(e) = tx.send("connecting") {
+                        error!("[SendError]: {}", e);
+                    }
                 }
                 EventPayload::Error(e) => {
                     log::error!("Error: {}", e.to_string())
@@ -274,6 +188,56 @@ fn main() {
             }
         }
     });
+    let mrx_clone = mrx.clone();
+    let c = client_guard.clone();
+    let subscribe = move || {
+        let ui_weak = ui.clone();
+        while let Ok(v) = mrx_clone.lock().unwrap().recv() {
+            if v == "connected" {
+                ui_weak.unwrap().set_mqtt_status(v.into());
+                let topics = vec![
+                    LightSubscriptions::ControllRoom.topic(),
+                    LightSubscriptions::ControllRoom.topic_with_ownership(),
+                    LightSubscriptions::Restroom.topic(),
+                    LightSubscriptions::Restroom.topic_with_ownership(),
+                    LightSubscriptions::Bathroom.topic(),
+                    LightSubscriptions::Bathroom.topic_with_ownership(),
+                    LightSubscriptions::Breakroom.topic(),
+                    LightSubscriptions::Breakroom.topic_with_ownership(),
+                ];
+                for topic in topics {
+                    let result = c
+                        .lock()
+                        .unwrap()
+                        .subscribe(topic.as_str(), QoS::AtLeastOnce);
+                    match result {
+                        Err(e) => error!("Не удалось подписаться на топик {}: {:?}", topic, e),
+                        Ok(_) => info!("Успешная подписка на топик: {}", topic),
+                    }
+                }
+            } else if v == "disconected" {
+                ui_weak.unwrap().set_mqtt_status(v.into());
+            } else if v == "connecting" {
+                // let ui_weak = ui_weak.clone();
+                // thread::spawn(move || {
+                //     let ui_c = ui_weak.clone().unwrap();
+                //     let t = Timer::default();
+                //     t.start(
+                //         slint::TimerMode::Repeated,
+                //         Duration::from_millis(500),
+                //         move || {
+                //             if ui_c.get_mqtt_is_connected() == "online" {
+                //                 ui_c.set_mqtt_is_connected("offline".into());
+                //             } else {
+                //                 ui_c.set_mqtt_is_connected("online".into());
+                //             }
+                //         },
+                //     );
+                // });
+            }
+        }
+    };
+    thread::spawn(subscribe);
     let c = client_guard.clone();
     main_window.on_g2_status(move |name, status| {
         info!("Name : {} Status:{}", name, status);
@@ -282,7 +246,7 @@ fn main() {
                 c.lock()
                     .unwrap()
                     .publish(
-                        LightSubscriptions::ControllRoom.path().as_str(),
+                        LightSubscriptions::ControllRoom.topic().as_str(),
                         QoS::AtLeastOnce,
                         true,
                         b"on",
@@ -292,7 +256,7 @@ fn main() {
                 c.lock()
                     .unwrap()
                     .publish(
-                        LightSubscriptions::ControllRoom.path().as_str(),
+                        LightSubscriptions::ControllRoom.topic().as_str(),
                         QoS::AtLeastOnce,
                         true,
                         b"off",
@@ -304,7 +268,7 @@ fn main() {
                 c.lock()
                     .unwrap()
                     .publish(
-                        LightSubscriptions::Restroom.path().as_str(),
+                        LightSubscriptions::Restroom.topic().as_str(),
                         QoS::AtLeastOnce,
                         true,
                         b"on",
@@ -314,7 +278,7 @@ fn main() {
                 c.lock()
                     .unwrap()
                     .publish(
-                        LightSubscriptions::Restroom.path().as_str(),
+                        LightSubscriptions::Restroom.topic().as_str(),
                         QoS::AtLeastOnce,
                         true,
                         b"off",
@@ -326,7 +290,7 @@ fn main() {
                 c.lock()
                     .unwrap()
                     .publish(
-                        LightSubscriptions::Bathroom.path().as_str(),
+                        LightSubscriptions::Bathroom.topic().as_str(),
                         QoS::AtLeastOnce,
                         true,
                         b"on",
@@ -336,7 +300,7 @@ fn main() {
                 c.lock()
                     .unwrap()
                     .publish(
-                        LightSubscriptions::Bathroom.path().as_str(),
+                        LightSubscriptions::Bathroom.topic().as_str(),
                         QoS::AtLeastOnce,
                         true,
                         b"off",
@@ -348,7 +312,7 @@ fn main() {
                 c.lock()
                     .unwrap()
                     .publish(
-                        LightSubscriptions::Breakroom.path().as_str(),
+                        LightSubscriptions::Breakroom.topic().as_str(),
                         QoS::AtLeastOnce,
                         true,
                         b"on",
@@ -358,7 +322,7 @@ fn main() {
                 c.lock()
                     .unwrap()
                     .publish(
-                        LightSubscriptions::Breakroom.path().as_str(),
+                        LightSubscriptions::Breakroom.topic().as_str(),
                         QoS::AtLeastOnce,
                         true,
                         b"off",
@@ -376,7 +340,7 @@ fn main() {
                     .unwrap()
                     .publish(
                         LightSubscriptions::ControllRoom
-                            .with_ownership_suffix()
+                            .topic_with_ownership()
                             .as_str(),
                         QoS::AtLeastOnce,
                         true,
@@ -388,7 +352,7 @@ fn main() {
                     .unwrap()
                     .publish(
                         LightSubscriptions::ControllRoom
-                            .with_ownership_suffix()
+                            .topic_with_ownership()
                             .as_str(),
                         QoS::AtLeastOnce,
                         true,
@@ -401,9 +365,7 @@ fn main() {
                 c.lock()
                     .unwrap()
                     .publish(
-                        LightSubscriptions::Restroom
-                            .with_ownership_suffix()
-                            .as_str(),
+                        LightSubscriptions::Restroom.topic_with_ownership().as_str(),
                         QoS::AtLeastOnce,
                         true,
                         b"on",
@@ -413,9 +375,7 @@ fn main() {
                 c.lock()
                     .unwrap()
                     .publish(
-                        LightSubscriptions::Restroom
-                            .with_ownership_suffix()
-                            .as_str(),
+                        LightSubscriptions::Restroom.topic_with_ownership().as_str(),
                         QoS::AtLeastOnce,
                         true,
                         b"off",
@@ -427,9 +387,7 @@ fn main() {
                 c.lock()
                     .unwrap()
                     .publish(
-                        LightSubscriptions::Bathroom
-                            .with_ownership_suffix()
-                            .as_str(),
+                        LightSubscriptions::Bathroom.topic_with_ownership().as_str(),
                         QoS::AtLeastOnce,
                         true,
                         b"on",
@@ -439,9 +397,7 @@ fn main() {
                 c.lock()
                     .unwrap()
                     .publish(
-                        LightSubscriptions::Bathroom
-                            .with_ownership_suffix()
-                            .as_str(),
+                        LightSubscriptions::Bathroom.topic_with_ownership().as_str(),
                         QoS::AtLeastOnce,
                         true,
                         b"off",
@@ -454,7 +410,7 @@ fn main() {
                     .unwrap()
                     .publish(
                         LightSubscriptions::Breakroom
-                            .with_ownership_suffix()
+                            .topic_with_ownership()
                             .as_str(),
                         QoS::AtLeastOnce,
                         true,
@@ -466,7 +422,7 @@ fn main() {
                     .unwrap()
                     .publish(
                         LightSubscriptions::Breakroom
-                            .with_ownership_suffix()
+                            .topic_with_ownership()
                             .as_str(),
                         QoS::AtLeastOnce,
                         true,

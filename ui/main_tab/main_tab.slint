@@ -20,6 +20,7 @@ export component MainTab inherits Rectangle{
     in-out property <image> gif-frame;
     in-out property <[LightObject]> light_controll_g1;
     in-out property <[LightObject]> light_controll_g2;
+    in-out property <string> mqtt_status;
     callback g1_status(string,bool);
     callback g2_status(string,bool);
     callback g2_ownership(string,bool);
@@ -48,6 +49,7 @@ export component MainTab inherits Rectangle{
                     horizontal-stretch: 5;
                     height: 50%;
                     wifi_status: wifi_status;
+                    mqtt_status:mqtt_status;
                 }
                 YandexWeatherFact {
                     weather_status: weather_status;

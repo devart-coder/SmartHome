@@ -12,6 +12,8 @@ export component Greetings inherits Rectangle {
     in-out property <string> pressure;
     in-out property <string> altitude;
     in-out property <string> wifi_status:"offline";
+    in-out property <string> mqtt_status;
+
     border-radius: 8px;
     clip: true;
     Image {
@@ -37,11 +39,31 @@ export component Greetings inherits Rectangle {
                         horizontal-alignment: start;
                         horizontal-stretch: 10;
                     }
-                    Image {
-                        source: wifi_status == "online" ?
-                            @image-url("../icons/wifi.svg") : @image-url("../icons/wifi-off.svg");
-                        colorize: header_color;
-                        horizontal-alignment: ImageHorizontalAlignment.right;
+                    HorizontalLayout {
+                        spacing: 10px;
+                        mqtt_image:=Image {
+                            source: @image-url("../icons/mqtt-icon-solid.svg");
+                            horizontal-alignment: ImageHorizontalAlignment.right;
+                        }
+                        timer:=Timer {
+                            interval: 500ms;
+                            running: mqtt_status == "connecting";
+                            property <bool> status: false;
+                            triggered => {
+                                if(!status){
+                                    mqtt_image.colorize=header_color.darker(2);
+                                }
+                                else{
+                                    mqtt_image.colorize=header_color;
+                                }
+                            }
+                        }
+                        Image {
+                            source: wifi_status == "online" ?
+                                @image-url("../icons/wifi.svg") : @image-url("../icons/wifi-off.svg");
+                            colorize: header_color;
+                            horizontal-alignment: ImageHorizontalAlignment.right;
+                        }
                     }
                 }
                 Text {

@@ -1,4 +1,3 @@
-use std::io::Error;
 
 use chrono::{Datelike, Weekday};
 use esp_idf_svc::http::{Method, client::EspHttpConnection};
