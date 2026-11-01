@@ -20,6 +20,7 @@ bmp180-driver = "0.1.1"
 chrono = "0.4.45"
 tinyjson = "2.5.1"
 mqttrs = "0.4.1"
+# tokio = { version="1.54.1",default-features = false, features = ["rt", "macros", "time"]}
 # futures = "0.3.34"
 
 
