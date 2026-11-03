@@ -9,7 +9,7 @@ runner = "espflash flash --monitor --flash-size 16mb"
 rustflags = [
     "-C", "default-linker-libraries",
     "-C", "link-arg=-Wl,--gc-sections",
-    "-C", "link-arg=-mlongcalls",
+    "-C", "link-arg=-mlongcalls"
 ]
 [unstable]
 build-std = ["core", "alloc", "std", "panic_abort"]
