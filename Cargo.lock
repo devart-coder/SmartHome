@@ -3041,6 +3041,7 @@ dependencies = [
  "anyhow",
  "bmp180-driver",
  "chrono",
+ "critical-section",
  "embedded-graphics",
  "embedded-graphics-framebuf",
  "embuild",

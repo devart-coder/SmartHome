@@ -11,14 +11,14 @@ use master_display::display::Display;
 use master_display::security::{BROKER_URL, LightSubscriptions, PASSWORD, SDDI};
 use master_display::ui::MainWindow;
 use master_display::wifi::Wifi;
-use master_display::{bmp_block, timer_block};
+use master_display::{bmp_block, timer_block, to_lcd, to_lcdln};
 use slint::ComponentHandle;
 use slint::platform::update_timers_and_animations;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex};
-use std::thread::{self};
+use std::thread;
 use std::time::Duration;
 fn main() {
     esp_idf_sys::link_patches();
@@ -40,39 +40,16 @@ fn main() {
     //------------------------------------------------------------------------//
     //SlintMainWindowDraw
     let main_window = MainWindow::new().unwrap();
-    match main_window.show() {
-        Ok(_) => info!("ui:: выполнен метод show"),
-        Err(_) => warn!("ui:: методд не позможно выполнить"),
-    };
+    // match main_window.show() {
+    // Ok(_) => info!("ui:: выполнен метод show"),
+    // Err(_) => warn!("ui:: метод не позможно выполнить"),
+    // };
     main_window.set_is_loading(true);
-    FreeRtos::delay_ms(100);
     //-------------------------------------------------//
-    macro_rules! log_to_lcdln {
-        ($msg:expr) => {
-            info!("{}", $msg);
-            let mut local_str = main_window.get_boot_logs();
-            local_str.push_str($msg);
-            local_str.push_str("\n");
-            main_window.set_boot_logs(local_str);
-            update_timers_and_animations();
-            display.update();
-            FreeRtos::delay_ms(100);
-        };
-    }
-    macro_rules! log_to_lcd {
-        ($msg:expr) => {
-            info!("{}", $msg);
-            let mut local_str = main_window.get_boot_logs();
-            local_str.push_str($msg);
-            main_window.set_boot_logs(local_str);
-            update_timers_and_animations();
-            display.update();
-            FreeRtos::delay_ms(100);
-        };
-    }
+
     //-------------------------------------------------//
     //---------------------_WIFI_----------------------//
-    log_to_lcdln!("Инициализация Wi-Fi...");
+    to_lcdln!("Инициализация Wi-Fi...", display, main_window);
     let mut wifi = Wifi::new(p.modem);
     wifi.init_config(|b| {
         b.set_ssid(SDDI)
@@ -80,39 +57,43 @@ fn main() {
             .set_auth_method(AuthMethod::WPA2Personal)
     });
     wifi.show_connection(|w| {
-        log_to_lcd!("Подключение к Wi-Fi... ");
+        to_lcd!("Подключение к Wi-Fi... ", display, main_window);
         match w.start() {
             Ok(_) => {
-                log_to_lcdln!("✅");
+                to_lcdln!("✅", display, main_window);
             }
             Err(err) => {
-                log_to_lcdln!(format!("Error {}", err).as_str());
+                to_lcdln!(format!("Error {}", err).as_str(), display, main_window);
             }
         };
 
-        log_to_lcd!("Поиск сети... ");
+        to_lcd!("Поиск сети... ", display, main_window);
         match w.connect() {
             Ok(_) => {
-                log_to_lcdln!("✅");
-                log_to_lcd!("Получение IP-адреса (DHCP)...");
+                to_lcdln!("✅", display, main_window);
+                to_lcd!("Получение IP-адреса (DHCP)...", display, main_window);
                 match w.wait_netif_up() {
                     Ok(_) => {
                         if let Ok(ip_info) = w.wifi().sta_netif().get_ip_info() {
-                            log_to_lcdln!(format!("✅\nIp: {:?}", ip_info.ip).as_str());
+                            to_lcdln!(
+                                format!("✅\nIp: {:?}", ip_info.ip).as_str(),
+                                display,
+                                main_window
+                            );
                         } else {
-                            log_to_lcdln!("✅ (No IP)");
+                            to_lcdln!("✅ (No IP)", display, main_window);
                         }
                     }
                     Err(err) => {
-                        log_to_lcdln!(format!("Error {}", err).as_str());
+                        to_lcdln!(format!("Error {}", err).as_str(), display, main_window);
                     }
                 };
             }
             Err(err) => {
-                log_to_lcdln!(format!("Error {}", err).as_str());
+                to_lcdln!(format!("Error {}", err).as_str(), display, main_window);
             }
         };
-        log_to_lcdln!("Wi-Fi успешно подключен!");
+        to_lcdln!("Wi-Fi успешно подключен!", display, main_window);
         unsafe {
             esp_idf_sys::esp_wifi_set_ps(esp_idf_sys::wifi_ps_type_t_WIFI_PS_NONE);
             println!("Режим энергосбережения Wi-Fi успешно ОТКЛЮЧЕН.");
@@ -121,17 +102,17 @@ fn main() {
     main_window.set_global_wifi_status("online".into());
     //-------------------------------------------------//
     //--------------------_LocalData_------------------//
-    log_to_lcdln!("Инициализация времени...");
+    to_lcdln!("Инициализация времени...", display, main_window);
     let sntp = EspSntp::new_default().unwrap();
-    log_to_lcdln!("Ожидание точного времени...");
+    to_lcdln!("Ожидание точного времени...", display, main_window);
     let mut counter = 1;
     while sntp.get_sync_status() != SyncStatus::Completed {
-        log_to_lcd!(format!("{} ", counter).as_str());
+        to_lcd!(format!("{} ", counter).as_str(), display, main_window);
         FreeRtos::delay_ms(1000);
         if counter <= 10 {
             counter += 1;
         } else {
-            log_to_lcdln!("times fail...");
+            to_lcdln!("times fail...", display, main_window);
             break;
         }
     }
@@ -140,7 +121,7 @@ fn main() {
             std::env::set_var("TZ", "MSK-3");
             esp_idf_sys::tzset();
         }
-        log_to_lcdln!("\nВремя успешно синхронизировано!");
+        to_lcdln!("\nВремя успешно синхронизировано!", display, main_window);
     }
     main_window.set_is_loading(false);
     display.update();
@@ -160,12 +141,17 @@ fn main() {
         &MqttClientConfiguration {
             client_id: Some("Display_7'"),
             keep_alive_interval: Some(Duration::from_secs(60)),
+            disable_clean_session: false,
+            username: None,
+            password: None,
             ..Default::default()
         },
     )
     .unwrap();
     let client_guard = Arc::new(Mutex::new(client));
-    std::thread::spawn(move || {
+    let mrx_clone = mrx.clone();
+    let c = client_guard.clone();
+    let connection_handle = move || {
         info!("Фоновый поток MQTT запущен, ожидание событий...");
         while let Ok(event) = connection.next() {
             match event.payload() {
@@ -187,9 +173,9 @@ fn main() {
                 _ => {}
             }
         }
-    });
-    let mrx_clone = mrx.clone();
-    let c = client_guard.clone();
+    };
+    thread::spawn(connection_handle);
+
     let subscribe = move || {
         let ui_weak = ui.clone();
         while let Ok(v) = mrx_clone.lock().unwrap().recv() {
@@ -435,5 +421,6 @@ fn main() {
     //---------------------------------------------------------//
     loop {
         display.handle_touch_pad();
+        thread::sleep(Duration::from_millis(20));
     }
 }
