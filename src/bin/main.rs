@@ -1,7 +1,6 @@
 use esp_idf_hal::delay::FreeRtos;
 use esp_idf_hal::i2c::{I2cConfig, I2cDriver};
 use esp_idf_hal::peripherals::Peripherals;
-use esp_idf_hal::units::Hertz;
 use esp_idf_svc::log::EspLogger;
 use esp_idf_svc::mqtt::client::{EspMqttClient, EventPayload, MqttClientConfiguration, QoS};
 use esp_idf_svc::sntp::{EspSntp, SyncStatus};
@@ -13,7 +12,6 @@ use master_display::ui::MainWindow;
 use master_display::wifi::Wifi;
 use master_display::{bmp_block, timer_block, to_lcd, to_lcdln};
 use slint::ComponentHandle;
-use slint::platform::update_timers_and_animations;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::mpsc::channel;
@@ -27,26 +25,20 @@ fn main() {
     //------------------------------------------------------------------------//
     //DisplayWindowInit
     let p = Peripherals::take().expect("Владение перифирией было захвачено где-то ранее.");
-    let i2c_driver = Rc::new(RefCell::new(
-        I2cDriver::new(
-            p.i2c0,
-            p.pins.gpio8, // SDA
-            p.pins.gpio9, // SCL
-            &I2cConfig::new().baudrate(Hertz(400_000)),
-        )
-        .expect("I2C ошибка захвата владения."),
-    ));
+    Rc::new(RefCell::new(&p));
+    let i2c_driver = I2cDriver::new(
+        p.i2c0,
+        p.pins.gpio8, // SDA
+        p.pins.gpio9, // SCL
+        &I2cConfig::new().baudrate(100_000.into()),
+    )
+    .unwrap();
+    let i2c_driver = Rc::new(RefCell::new(i2c_driver));
     let mut display = Display::default(i2c_driver.clone());
     //------------------------------------------------------------------------//
-    //SlintMainWindowDraw
+    //SlintMainWindow
     let main_window = MainWindow::new().unwrap();
-    // match main_window.show() {
-    // Ok(_) => info!("ui:: выполнен метод show"),
-    // Err(_) => warn!("ui:: метод не позможно выполнить"),
-    // };
     main_window.set_is_loading(true);
-    //-------------------------------------------------//
-
     //-------------------------------------------------//
     //---------------------_WIFI_----------------------//
     to_lcdln!("Инициализация Wi-Fi...", display, main_window);
@@ -66,7 +58,6 @@ fn main() {
                 to_lcdln!(format!("Error {}", err).as_str(), display, main_window);
             }
         };
-
         to_lcd!("Поиск сети... ", display, main_window);
         match w.connect() {
             Ok(_) => {
@@ -93,11 +84,11 @@ fn main() {
                 to_lcdln!(format!("Error {}", err).as_str(), display, main_window);
             }
         };
-        to_lcdln!("Wi-Fi успешно подключен!", display, main_window);
         unsafe {
             esp_idf_sys::esp_wifi_set_ps(esp_idf_sys::wifi_ps_type_t_WIFI_PS_NONE);
             println!("Режим энергосбережения Wi-Fi успешно ОТКЛЮЧЕН.");
         }
+        to_lcdln!("Wi-Fi успешно подключен!", display, main_window);
     });
     main_window.set_global_wifi_status("online".into());
     //-------------------------------------------------//
@@ -107,7 +98,7 @@ fn main() {
     to_lcdln!("Ожидание точного времени...", display, main_window);
     let mut counter = 1;
     while sntp.get_sync_status() != SyncStatus::Completed {
-        to_lcd!(format!("{} ", counter).as_str(), display, main_window);
+        to_lcd!(format!("{counter}").as_str(), display, main_window);
         FreeRtos::delay_ms(1000);
         if counter <= 10 {
             counter += 1;
@@ -124,10 +115,10 @@ fn main() {
         to_lcdln!("\nВремя успешно синхронизировано!", display, main_window);
     }
     main_window.set_is_loading(false);
-    display.update();
     //-------------------------------------------------//
     let _timer = timer_block(main_window.as_weak());
-    let _timer_bmp = bmp_block(main_window.as_weak(), i2c_driver);
+    let _timer_bmp = bmp_block(main_window.as_weak(), i2c_driver.clone());
+    display.update();
     //-------------------------------------------------//
     let ui = main_window.as_weak();
     let (tx, rx) = channel::<&str>();
@@ -136,7 +127,7 @@ fn main() {
     }
     let mrx = Arc::new(Mutex::new(rx));
     let _mrx_clone = mrx.clone();
-    let (client, mut connection) = EspMqttClient::new(
+    match EspMqttClient::new(
         BROKER_URL,
         &MqttClientConfiguration {
             client_id: Some("Display_7'"),
@@ -146,281 +137,272 @@ fn main() {
             password: None,
             ..Default::default()
         },
-    )
-    .unwrap();
-    let client_guard = Arc::new(Mutex::new(client));
-    let mrx_clone = mrx.clone();
-    let c = client_guard.clone();
-    let connection_handle = move || {
-        info!("Фоновый поток MQTT запущен, ожидание событий...");
-        while let Ok(event) = connection.next() {
-            match event.payload() {
-                EventPayload::Connected(_) => {
-                    info!("Успешно подключились к MQTT-брокеру!");
-                    if let Err(e) = tx.send("connected") {
-                        error!("[SendError]: {}", e);
+    ) {
+        Ok((client, mut connection)) => {
+            let client_guard = Arc::new(Mutex::new(client));
+            let c = client_guard.clone();
+            let connection_handle = move || {
+                info!("Фоновый поток MQTT запущен, ожидание событий...");
+                while let Ok(event) = connection.next() {
+                    match event.payload() {
+                        EventPayload::Connected(_) => {
+                            info!("Успешно подключились к MQTT-брокеру!");
+                            if let Err(e) = tx.send("connected") {
+                                error!("[SendError]: {}", e);
+                            }
+                        }
+                        EventPayload::Disconnected => {
+                            warn!("Потеряно соединение с MQTT-брокером. Переподключение...");
+                            if let Err(e) = tx.send("connecting") {
+                                error!("[SendError]: {}", e);
+                            }
+                        }
+                        EventPayload::Error(e) => {
+                            log::error!("Error: {}", e.to_string())
+                        }
+                        _ => {}
                     }
                 }
-                EventPayload::Disconnected => {
-                    warn!("Потеряно соединение с MQTT-брокером. Переподключение...");
-                    if let Err(e) = tx.send("connecting") {
-                        error!("[SendError]: {}", e);
+            };
+            thread::spawn(connection_handle);
+            let mrx_clone = mrx.clone();
+            let subscribe = move || {
+                let ui_weak = ui.clone();
+                while let Ok(v) = mrx_clone.lock().unwrap().recv() {
+                    if v == "connected" {
+                        ui_weak.unwrap().set_mqtt_status(v.into());
+                        let topics = vec![
+                            LightSubscriptions::ControllRoom.topic(),
+                            LightSubscriptions::ControllRoom.topic_with_ownership(),
+                            LightSubscriptions::Restroom.topic(),
+                            LightSubscriptions::Restroom.topic_with_ownership(),
+                            LightSubscriptions::Bathroom.topic(),
+                            LightSubscriptions::Bathroom.topic_with_ownership(),
+                            LightSubscriptions::Breakroom.topic(),
+                            LightSubscriptions::Breakroom.topic_with_ownership(),
+                        ];
+                        for topic in topics {
+                            let result = c
+                                .lock()
+                                .unwrap()
+                                .subscribe(topic.as_str(), QoS::AtLeastOnce);
+                            match result {
+                                Err(e) => {
+                                    error!("Не удалось подписаться на топик {}: {:?}", topic, e)
+                                }
+                                Ok(_) => info!("Успешная подписка на топик: {}", topic),
+                            }
+                        }
+                    } else if v == "disconected" {
+                        // ui_weak.unwrap().set_mqtt_status(v.into());
+                    } else if v == "connecting" {
+                        // let ui_weak = ui_weak.clone();
+                        // thread::spawn(move || {
+                        //     let ui_c = ui_weak.clone().unwrap();
+                        //     let t = Timer::default();
+                        //     t.start(
+                        //         slint::TimerMode::Repeated,
+                        //         Duration::from_millis(500),
+                        //         move || {
+                        //             if ui_c.get_mqtt_is_connected() == "online" {
+                        //                 ui_c.set_mqtt_is_connected("offline".into());
+                        //             } else {
+                        //                 ui_c.set_mqtt_is_connected("online".into());
+                        //             }
+                        //         },
+                        //     );
+                        // });
                     }
                 }
-                EventPayload::Error(e) => {
-                    log::error!("Error: {}", e.to_string())
+            };
+            thread::spawn(subscribe);
+            let c = client_guard.clone();
+            main_window.on_g2_status(move |name, status| {
+                info!("Name : {} Status:{}", name, status);
+                let mut c_lock = c.lock().unwrap();
+                if name == LightSubscriptions::ControllRoom.name() {
+                    if status == true {
+                        c_lock
+                            .publish(
+                                LightSubscriptions::ControllRoom.topic().as_str(),
+                                QoS::AtLeastOnce,
+                                true,
+                                b"on",
+                            )
+                            .unwrap();
+                    } else {
+                        c_lock
+                            .publish(
+                                LightSubscriptions::ControllRoom.topic().as_str(),
+                                QoS::AtLeastOnce,
+                                true,
+                                b"off",
+                            )
+                            .unwrap();
+                    }
+                } else if name == LightSubscriptions::Restroom.name() {
+                    if status == true {
+                        c_lock
+                            .publish(
+                                LightSubscriptions::Restroom.topic().as_str(),
+                                QoS::AtLeastOnce,
+                                true,
+                                b"on",
+                            )
+                            .unwrap();
+                    } else {
+                        c_lock
+                            .publish(
+                                LightSubscriptions::Restroom.topic().as_str(),
+                                QoS::AtLeastOnce,
+                                true,
+                                b"off",
+                            )
+                            .unwrap();
+                    }
+                } else if name == LightSubscriptions::Bathroom.name() {
+                    if status == true {
+                        c_lock
+                            .publish(
+                                LightSubscriptions::Bathroom.topic().as_str(),
+                                QoS::AtLeastOnce,
+                                true,
+                                b"on",
+                            )
+                            .unwrap();
+                    } else {
+                        c_lock
+                            .publish(
+                                LightSubscriptions::Bathroom.topic().as_str(),
+                                QoS::AtLeastOnce,
+                                true,
+                                b"off",
+                            )
+                            .unwrap();
+                    }
+                } else if name == LightSubscriptions::Breakroom.name() {
+                    if status == true {
+                        c_lock
+                            .publish(
+                                LightSubscriptions::Breakroom.topic().as_str(),
+                                QoS::AtLeastOnce,
+                                true,
+                                b"on",
+                            )
+                            .unwrap();
+                    } else {
+                        c_lock
+                            .publish(
+                                LightSubscriptions::Breakroom.topic().as_str(),
+                                QoS::AtLeastOnce,
+                                true,
+                                b"off",
+                            )
+                            .unwrap();
+                    }
                 }
-                _ => {}
-            }
+            });
+            main_window.on_g2_ownership(move |name, ownership| {
+                info!("Name : {} Ownership:{}", name, ownership);
+                let c = client_guard.clone();
+                thread::spawn(move || {
+                    let mut c_lock = c.lock().unwrap();
+                    if name == LightSubscriptions::ControllRoom.name() {
+                        if ownership == true {
+                            c_lock
+                                .publish(
+                                    LightSubscriptions::ControllRoom
+                                        .topic_with_ownership()
+                                        .as_str(),
+                                    QoS::AtLeastOnce,
+                                    true,
+                                    b"on",
+                                )
+                                .unwrap();
+                        } else {
+                            c_lock
+                                .publish(
+                                    LightSubscriptions::ControllRoom
+                                        .topic_with_ownership()
+                                        .as_str(),
+                                    QoS::AtLeastOnce,
+                                    true,
+                                    b"off",
+                                )
+                                .unwrap();
+                        }
+                    } else if name == LightSubscriptions::Restroom.name() {
+                        if ownership == true {
+                            c_lock
+                                .publish(
+                                    LightSubscriptions::Restroom.topic_with_ownership().as_str(),
+                                    QoS::AtLeastOnce,
+                                    true,
+                                    b"on",
+                                )
+                                .unwrap();
+                        } else {
+                            c_lock
+                                .publish(
+                                    LightSubscriptions::Restroom.topic_with_ownership().as_str(),
+                                    QoS::AtLeastOnce,
+                                    true,
+                                    b"off",
+                                )
+                                .unwrap();
+                        }
+                    } else if name == LightSubscriptions::Bathroom.name() {
+                        if ownership == true {
+                            c_lock
+                                .publish(
+                                    LightSubscriptions::Bathroom.topic_with_ownership().as_str(),
+                                    QoS::AtLeastOnce,
+                                    true,
+                                    b"on",
+                                )
+                                .unwrap();
+                        } else {
+                            c_lock
+                                .publish(
+                                    LightSubscriptions::Bathroom.topic_with_ownership().as_str(),
+                                    QoS::AtLeastOnce,
+                                    true,
+                                    b"off",
+                                )
+                                .unwrap();
+                        }
+                    } else if name == LightSubscriptions::Breakroom.name() {
+                        if ownership == true {
+                            c_lock
+                                .publish(
+                                    LightSubscriptions::Breakroom
+                                        .topic_with_ownership()
+                                        .as_str(),
+                                    QoS::AtLeastOnce,
+                                    true,
+                                    b"on",
+                                )
+                                .unwrap();
+                        } else {
+                            c_lock
+                                .publish(
+                                    LightSubscriptions::Breakroom
+                                        .topic_with_ownership()
+                                        .as_str(),
+                                    QoS::AtLeastOnce,
+                                    true,
+                                    b"off",
+                                )
+                                .unwrap();
+                        }
+                    }
+                });
+            });
         }
+        Err(err) => error!("[Error]:{err}"),
     };
-    thread::spawn(connection_handle);
-
-    let subscribe = move || {
-        let ui_weak = ui.clone();
-        while let Ok(v) = mrx_clone.lock().unwrap().recv() {
-            if v == "connected" {
-                ui_weak.unwrap().set_mqtt_status(v.into());
-                let topics = vec![
-                    LightSubscriptions::ControllRoom.topic(),
-                    LightSubscriptions::ControllRoom.topic_with_ownership(),
-                    LightSubscriptions::Restroom.topic(),
-                    LightSubscriptions::Restroom.topic_with_ownership(),
-                    LightSubscriptions::Bathroom.topic(),
-                    LightSubscriptions::Bathroom.topic_with_ownership(),
-                    LightSubscriptions::Breakroom.topic(),
-                    LightSubscriptions::Breakroom.topic_with_ownership(),
-                ];
-                for topic in topics {
-                    let result = c
-                        .lock()
-                        .unwrap()
-                        .subscribe(topic.as_str(), QoS::AtLeastOnce);
-                    match result {
-                        Err(e) => error!("Не удалось подписаться на топик {}: {:?}", topic, e),
-                        Ok(_) => info!("Успешная подписка на топик: {}", topic),
-                    }
-                }
-            } else if v == "disconected" {
-                ui_weak.unwrap().set_mqtt_status(v.into());
-            } else if v == "connecting" {
-                // let ui_weak = ui_weak.clone();
-                // thread::spawn(move || {
-                //     let ui_c = ui_weak.clone().unwrap();
-                //     let t = Timer::default();
-                //     t.start(
-                //         slint::TimerMode::Repeated,
-                //         Duration::from_millis(500),
-                //         move || {
-                //             if ui_c.get_mqtt_is_connected() == "online" {
-                //                 ui_c.set_mqtt_is_connected("offline".into());
-                //             } else {
-                //                 ui_c.set_mqtt_is_connected("online".into());
-                //             }
-                //         },
-                //     );
-                // });
-            }
-        }
-    };
-    thread::spawn(subscribe);
-    let c = client_guard.clone();
-    main_window.on_g2_status(move |name, status| {
-        info!("Name : {} Status:{}", name, status);
-        if name == LightSubscriptions::ControllRoom.name() {
-            if status == true {
-                c.lock()
-                    .unwrap()
-                    .publish(
-                        LightSubscriptions::ControllRoom.topic().as_str(),
-                        QoS::AtLeastOnce,
-                        true,
-                        b"on",
-                    )
-                    .unwrap();
-            } else {
-                c.lock()
-                    .unwrap()
-                    .publish(
-                        LightSubscriptions::ControllRoom.topic().as_str(),
-                        QoS::AtLeastOnce,
-                        true,
-                        b"off",
-                    )
-                    .unwrap();
-            }
-        } else if name == LightSubscriptions::Restroom.name() {
-            if status == true {
-                c.lock()
-                    .unwrap()
-                    .publish(
-                        LightSubscriptions::Restroom.topic().as_str(),
-                        QoS::AtLeastOnce,
-                        true,
-                        b"on",
-                    )
-                    .unwrap();
-            } else {
-                c.lock()
-                    .unwrap()
-                    .publish(
-                        LightSubscriptions::Restroom.topic().as_str(),
-                        QoS::AtLeastOnce,
-                        true,
-                        b"off",
-                    )
-                    .unwrap();
-            }
-        } else if name == LightSubscriptions::Bathroom.name() {
-            if status == true {
-                c.lock()
-                    .unwrap()
-                    .publish(
-                        LightSubscriptions::Bathroom.topic().as_str(),
-                        QoS::AtLeastOnce,
-                        true,
-                        b"on",
-                    )
-                    .unwrap();
-            } else {
-                c.lock()
-                    .unwrap()
-                    .publish(
-                        LightSubscriptions::Bathroom.topic().as_str(),
-                        QoS::AtLeastOnce,
-                        true,
-                        b"off",
-                    )
-                    .unwrap();
-            }
-        } else if name == LightSubscriptions::Breakroom.name() {
-            if status == true {
-                c.lock()
-                    .unwrap()
-                    .publish(
-                        LightSubscriptions::Breakroom.topic().as_str(),
-                        QoS::AtLeastOnce,
-                        true,
-                        b"on",
-                    )
-                    .unwrap();
-            } else {
-                c.lock()
-                    .unwrap()
-                    .publish(
-                        LightSubscriptions::Breakroom.topic().as_str(),
-                        QoS::AtLeastOnce,
-                        true,
-                        b"off",
-                    )
-                    .unwrap();
-            }
-        }
-    });
-    let c = client_guard.clone();
-    main_window.on_g2_ownership(move |name, ownership| {
-        info!("Name : {} Ownership:{}", name, ownership);
-        if name == LightSubscriptions::ControllRoom.name() {
-            if ownership == true {
-                c.lock()
-                    .unwrap()
-                    .publish(
-                        LightSubscriptions::ControllRoom
-                            .topic_with_ownership()
-                            .as_str(),
-                        QoS::AtLeastOnce,
-                        true,
-                        b"on",
-                    )
-                    .unwrap();
-            } else {
-                c.lock()
-                    .unwrap()
-                    .publish(
-                        LightSubscriptions::ControllRoom
-                            .topic_with_ownership()
-                            .as_str(),
-                        QoS::AtLeastOnce,
-                        true,
-                        b"off",
-                    )
-                    .unwrap();
-            }
-        } else if name == LightSubscriptions::Restroom.name() {
-            if ownership == true {
-                c.lock()
-                    .unwrap()
-                    .publish(
-                        LightSubscriptions::Restroom.topic_with_ownership().as_str(),
-                        QoS::AtLeastOnce,
-                        true,
-                        b"on",
-                    )
-                    .unwrap();
-            } else {
-                c.lock()
-                    .unwrap()
-                    .publish(
-                        LightSubscriptions::Restroom.topic_with_ownership().as_str(),
-                        QoS::AtLeastOnce,
-                        true,
-                        b"off",
-                    )
-                    .unwrap();
-            }
-        } else if name == LightSubscriptions::Bathroom.name() {
-            if ownership == true {
-                c.lock()
-                    .unwrap()
-                    .publish(
-                        LightSubscriptions::Bathroom.topic_with_ownership().as_str(),
-                        QoS::AtLeastOnce,
-                        true,
-                        b"on",
-                    )
-                    .unwrap();
-            } else {
-                c.lock()
-                    .unwrap()
-                    .publish(
-                        LightSubscriptions::Bathroom.topic_with_ownership().as_str(),
-                        QoS::AtLeastOnce,
-                        true,
-                        b"off",
-                    )
-                    .unwrap();
-            }
-        } else if name == LightSubscriptions::Breakroom.name() {
-            if ownership == true {
-                c.lock()
-                    .unwrap()
-                    .publish(
-                        LightSubscriptions::Breakroom
-                            .topic_with_ownership()
-                            .as_str(),
-                        QoS::AtLeastOnce,
-                        true,
-                        b"on",
-                    )
-                    .unwrap();
-            } else {
-                c.lock()
-                    .unwrap()
-                    .publish(
-                        LightSubscriptions::Breakroom
-                            .topic_with_ownership()
-                            .as_str(),
-                        QoS::AtLeastOnce,
-                        true,
-                        b"off",
-                    )
-                    .unwrap();
-            }
-        }
-    });
     //---------------------------------------------------------//
     loop {
         display.handle_touch_pad();
-        thread::sleep(Duration::from_millis(20));
     }
 }

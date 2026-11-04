@@ -7,6 +7,7 @@ use bmp180_driver::BMP180;
 use chrono::Local;
 use esp_idf_hal::i2c::I2cDriver;
 use esp_idf_svc::http::client::{Configuration, EspHttpConnection};
+use log::error;
 use slint::Timer;
 use slint::{ToSharedString, Weak};
 use std::cell::RefCell;
@@ -26,9 +27,7 @@ macro_rules! to_lcd {
         let mut local_str = $ui.get_boot_logs();
         local_str.push_str($msg);
         $ui.set_boot_logs(local_str);
-        // update_timers_and_animations();
         $display.update();
-        // FreeRtos::delay_ms(100);
     };
 }
 #[macro_export]
@@ -36,24 +35,18 @@ macro_rules! to_lcdln {
     ($msg:expr,$display:ident,$ui:ident) => {
         let e = $msg.to_string() + "\n";
         to_lcd!(e.as_str(), $display, $ui)
-        // info!("{}", $msg);
-        // let mut local_str = ui.get_boot_logs();
-        // local_str.push_str($msg);
-        // local_str.push_str("\n");
-        // ui.set_boot_logs(local_str);
-        // update_timers_and_animations();
-        // display.update();
-        // FreeRtos::delay_ms(100);
     };
 }
-
 pub fn timer_block(ui: Weak<MainWindow>) -> Timer {
     let timer_fn = move || {
         let time = Local::now();
         let weak = YandexWeatherFact::get_rus_weekday(&time).to_shared_string();
         let time = time.format("%H:%M %d.%m.%Y").to_shared_string();
-        if let Some(ui) = ui.upgrade() {
-            ui.set_global_time(format!("{}, {}", weak, time).into());
+        match ui.upgrade() {
+            Some(ui) => {
+                ui.set_global_time(format!("{}, {}", weak, time).into());
+            }
+            None => error!("[Error]: time_block"),
         }
     };
     let timer = Timer::default();
@@ -62,11 +55,11 @@ pub fn timer_block(ui: Weak<MainWindow>) -> Timer {
 }
 pub fn bmp_block(ui: Weak<MainWindow>, i2c_driver: Rc<RefCell<I2cDriver<'static>>>) -> Timer {
     let timer_bmp = Timer::default();
-    let i2c_driver_clone = i2c_driver.clone();
+    // let i2c_driver_clone = i2c_driver;
     let mut bmp_holder = None;
 
     let mut timer_bmp_action = move || {
-        let mut i2c_ref = i2c_driver_clone.borrow_mut();
+        let mut i2c_ref = i2c_driver.borrow_mut();
         if bmp_holder.is_none() {
             unsafe {
                 let static_i2c: &mut I2cDriver<'static> = std::mem::transmute(&mut *i2c_ref);

@@ -32,7 +32,7 @@ pub struct Display {
     platform: DisplayPlatform,
     status: TouchPadStatus,
 }
-unsafe impl Send for Display {}
+// unsafe impl Send for Display {}
 #[derive(Clone, Debug)]
 struct TouchPadStatus {
     touched: bool,
@@ -64,7 +64,7 @@ impl Display {
             panel_config: unsafe {
                 std::mem::MaybeUninit::<idf::esp_lcd_rgb_panel_config_t>::zeroed().assume_init()
             },
-            i2c: i2c,
+            i2c,
             fb0: std::ptr::null_mut(),
             fb1: std::ptr::null_mut(),
             active_fb: 0,
@@ -89,9 +89,9 @@ impl Display {
     pub fn touch_pad(&self) -> GT911 {
         GT911::new(self.i2c.clone())
     }
-    pub fn i2c(&self) -> Rc<RefCell<I2cDriver<'static>>> {
-        Rc::clone(&self.i2c)
-    }
+    // pub fn i2c(&self) -> &'static I2cDriver<'static> {
+    // self.i2c
+    // }
     pub fn update(&mut self) {
         let was_redraw = self.platform.window.draw_if_needed(|render| {
             render.render_by_line(&mut self.clone());
@@ -103,37 +103,40 @@ impl Display {
     pub fn handle_touch_pad(&mut self) {
         let window = self.platform.window.clone();
         update_timers_and_animations();
-        if let Some((x, y)) = self.touch_pad().read_touch() {
-            self.status.release_counter = 0;
-            self.status.last_position = slint::LogicalPosition::new(x as f32, y as f32);
+        match self.touch_pad().read_touch() {
+            Some((x, y)) => {
+                self.status.release_counter = 0;
+                self.status.last_position = slint::LogicalPosition::new(x as f32, y as f32);
 
-            window.dispatch_event(slint::platform::WindowEvent::PointerMoved {
-                position: self.status.last_position,
-            });
-            if !self.status.touched {
-                window.dispatch_event(WindowEvent::PointerPressed {
+                window.dispatch_event(slint::platform::WindowEvent::PointerMoved {
                     position: self.status.last_position,
-                    button: PointerEventButton::Left,
                 });
-                self.status.touched = true;
-            }
-        } else {
-            if self.status.touched {
-                self.status.release_counter += 1;
-                if self.status.release_counter >= 3 {
-                    window.dispatch_event(WindowEvent::PointerReleased {
+
+                if !self.status.touched {
+                    window.dispatch_event(WindowEvent::PointerPressed {
                         position: self.status.last_position,
                         button: PointerEventButton::Left,
                     });
-                    self.status.touched = false;
-                    self.status.release_counter = 0;
+                    self.status.touched = true;
+                }
+            }
+            None => {
+                if self.status.touched {
+                    self.status.release_counter += 1;
+                    if self.status.release_counter >= 3 {
+                        window.dispatch_event(WindowEvent::PointerReleased {
+                            position: self.status.last_position,
+                            button: PointerEventButton::Left,
+                        });
+                        self.status.touched = false;
+                        self.status.release_counter = 0;
+                    }
                 }
             }
         }
         self.update();
         FreeRtos::delay_ms(8);
     }
-    //private
     fn init_buffer(mut self) -> Self {
         unsafe {
             let mut fb0: *mut std::ffi::c_void = std::ptr::null_mut();
@@ -294,21 +297,18 @@ impl GT911 {
         const GT911_ADDRESS: u8 = 0x14;
         const STATUS_ADDRESS: u16 = 0x814E;
         let mut status_reg = [0u8; 1];
-        if let Err(_) = self.i2c_read_reg(GT911_ADDRESS, STATUS_ADDRESS, &mut status_reg) {
+        if let Err(_err) = self.i2c_read_reg(GT911_ADDRESS, STATUS_ADDRESS, &mut status_reg) {
             return None;
         }
 
         let status = status_reg[0];
-        let buffer_status = status & 0x80; // Проверяем флаг готовности данных
-        let number_of_touches = status & 0x0F; // Количество пальцев (от 0 до 5)
-
+        let buffer_status = status & 0x80;
+        let number_of_touches = status & 0x0F;
         if buffer_status == 0 || number_of_touches == 0 {
-            // Если новых нажатий нет, обязательно сбрасываем буфер (пишем 0 в статус), чтобы чип не завис
             let _ = self.i2c_write_reg(GT911_ADDRESS, STATUS_ADDRESS, 0);
             return None;
         }
 
-        // 2. Считываем координаты первой точки касания (Регистры 0x8150 - 0x8153)
         let mut coord_buf = [0u8; 4];
         if let Ok(_) = self.i2c_read_reg(GT911_ADDRESS, 0x8150, &mut coord_buf) {
             let x = u16::from_le_bytes([coord_buf[0], coord_buf[1]]);
@@ -316,7 +316,6 @@ impl GT911 {
             let _ = self.i2c_write_reg(GT911_ADDRESS, 0x814E, 0);
             return Some((x, y));
         }
-        // Если новых нажатий нет, обязательно сбрасываем буфер (пишем 0 в статус), чтобы чип не завис
         let _ = self.i2c_write_reg(GT911_ADDRESS, STATUS_ADDRESS, 0);
         None
     }
