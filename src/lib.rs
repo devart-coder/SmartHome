@@ -55,7 +55,6 @@ pub fn timer_block(ui: Weak<MainWindow>) -> Timer {
 }
 pub fn bmp_block(ui: Weak<MainWindow>, i2c_driver: Rc<RefCell<I2cDriver<'static>>>) -> Timer {
     let timer_bmp = Timer::default();
-    // let i2c_driver_clone = i2c_driver;
     let mut bmp_holder = None;
 
     let mut timer_bmp_action = move || {

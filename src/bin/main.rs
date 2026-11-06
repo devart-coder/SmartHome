@@ -5,13 +5,14 @@ use esp_idf_svc::log::EspLogger;
 use esp_idf_svc::mqtt::client::{EspMqttClient, EventPayload, MqttClientConfiguration, QoS};
 use esp_idf_svc::sntp::{EspSntp, SyncStatus};
 use esp_idf_svc::wifi::AuthMethod;
+use esp_idf_sys::EspError;
 use log::{error, info, warn};
 use master_display::display::Display;
 use master_display::security::{BROKER_URL, LightSubscriptions, PASSWORD, SDDI};
 use master_display::ui::MainWindow;
 use master_display::wifi::Wifi;
 use master_display::{bmp_block, timer_block, to_lcd, to_lcdln};
-use slint::ComponentHandle;
+use slint::{ComponentHandle, SharedString};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::mpsc::channel;
@@ -94,26 +95,35 @@ fn main() {
     //-------------------------------------------------//
     //--------------------_LocalData_------------------//
     to_lcdln!("Инициализация времени...", display, main_window);
-    let sntp = EspSntp::new_default().unwrap();
-    to_lcdln!("Ожидание точного времени...", display, main_window);
-    let mut counter = 1;
-    while sntp.get_sync_status() != SyncStatus::Completed {
-        to_lcd!(format!("{counter}").as_str(), display, main_window);
-        FreeRtos::delay_ms(1000);
+    let thread = thread::spawn(move || {
+        let mut counter = 1;
+        let sntp = EspSntp::new_default().unwrap();
+        while sntp.get_sync_status() != SyncStatus::Completed {
+            FreeRtos::delay_ms(1000);
+            if counter <= 10 {
+                counter += 1;
+            } else {
+                break;
+            }
+        }
         if counter <= 10 {
-            counter += 1;
-        } else {
-            to_lcdln!("times fail...", display, main_window);
-            break;
+            unsafe {
+                std::env::set_var("TZ", "MSK-3");
+                esp_idf_sys::tzset();
+            }
+            return SyncStatus::Completed;
         }
-    }
-    if counter <= 10 {
-        unsafe {
-            std::env::set_var("TZ", "MSK-3");
-            esp_idf_sys::tzset();
+        sntp.get_sync_status()
+    });
+    let r = thread.join().unwrap();
+    match r {
+        SyncStatus::Completed => {
+            to_lcd!("\nВремя успешно синхронизировано!", display, main_window);
         }
-        to_lcdln!("\nВремя успешно синхронизировано!", display, main_window);
-    }
+        _ => {
+            to_lcd!("Times fail...", display, main_window);
+        }
+    };
     main_window.set_is_loading(false);
     //-------------------------------------------------//
     let _timer = timer_block(main_window.as_weak());
