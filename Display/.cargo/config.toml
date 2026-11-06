@@ -1,0 +1,21 @@
+
+[build]
+target = "xtensa-esp32s3-espidf"
+
+[target.xtensa-esp32s3-espidf]
+linker = "ldproxy"
+runner = "espflash flash --monitor --flash-size 16mb"
+# runner = "espflash save-image --chip esp32s3 --merge --skip-padding target/xtensa-esp32-s3-espidf/debug/main.bin"
+rustflags = [
+    "-C", "default-linker-libraries",
+    "-C", "link-arg=-Wl,--gc-sections",
+    "-C", "link-arg=-mlongcalls"
+]
+[unstable]
+build-std = ["core", "alloc", "std", "panic_abort"]
+
+[env]
+MCU = "esp32s3"
+ESP_IDF_SDKCONFIG_DEFAULTS = { value = "sdkconfig.defaults", relative = true }
+ESP_IDF_CMAKE_GENERATOR = "Ninja"
+ESP_IDF_VERSION = "tag:v5.2.2"

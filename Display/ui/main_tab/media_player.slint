@@ -1,0 +1,103 @@
+export component MediaPlayer inherits Rectangle{
+    in property <brush> widget_background_color;
+    in property <brush> front_color;
+    private property <int> frame-ticker: 0;
+    in-out property <image> gif-frame;
+    in-out property <bool> next_button_pressed : false;
+    in-out property <bool> play_button_pressed : false;
+    in-out property <bool> backward_button_pressed : false;
+    border-radius: 8px;
+    background: widget_background_color;
+    vertical-stretch: 4;
+    horizontal-stretch: 1;
+    border-width: 2px;
+    border-color: widget_background_color.brighter(0.25);
+    VerticalLayout {
+        padding: 10px;
+        spacing: 10px;
+        Text {
+            text: "Медиа";
+            font-size: 24px;
+            color: front_color;
+            horizontal-alignment: center;
+        }
+        HorizontalLayout {
+            spacing: 10px;
+            alignment: center;
+            TouchArea {
+                width: 50px; height: 40px;
+                clicked => { backward_button_pressed = !backward_button_pressed }
+                Rectangle {
+                    background: !backward_button_pressed ?
+                        widget_background_color.brighter(0.25) : widget_background_color.brighter(0.7);
+                    border-width: 2px;
+                    border-color: !backward_button_pressed ?
+                        widget_background_color.brighter(0.25) : darkcyan;
+                    border-radius: 6px;
+                    Text {
+                        text: "⏮️";
+                        color: white;
+                        font-size: 24px;
+                        horizontal-alignment:center;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+            TouchArea {
+                width: 50px; height: 40px;
+                clicked => { play_button_pressed = !play_button_pressed }
+                Rectangle {
+                    background: !play_button_pressed ?
+                        widget_background_color.brighter(0.25) : widget_background_color.brighter(0.7);
+                    border-width: 2px;
+                    border-color: !play_button_pressed ?
+                        widget_background_color.brighter(0.25) : darkcyan;
+                    border-radius: 6px;
+                    Text {
+                        text: "▶️";
+                        color: white;
+                        font-size: 24px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+            TouchArea {
+                width: 50px; height: 40px;
+                clicked => {
+                    next_button_pressed = !next_button_pressed;
+                }
+                Rectangle {
+                    background: !next_button_pressed ?
+                        widget_background_color.brighter(0.25) : widget_background_color.brighter(0.7);
+                    border-width: 2px;
+                    border-color: !next_button_pressed ?
+                        widget_background_color.brighter(0.25) : darkcyan;
+                    border-radius: 6px;
+                    Text {
+                        text: "⏭️";
+                        color: white;
+                        font-size: 24px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                border-radius: 8px;
+                max-width: 100px;
+                background: black.with-alpha(0.7);
+                Image {
+                    image-fit: contain; // Аналог сохранения пропорций в Slint
+                    width: parent.width;
+                    height: 100%;
+                    source: @image-url("../cassette_1.gif");
+                    opacity: root.frame-ticker >= 0 ? 1.0 : 0.0;
+                }
+            }
+        }
+    }
+}
