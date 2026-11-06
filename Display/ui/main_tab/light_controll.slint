@@ -1,0 +1,96 @@
+import { StandardButton, VerticalBox } from "std-widgets.slint";
+export struct LightObject{
+    name:string,
+    ownship:bool,
+    is_on:bool,
+}
+export component LightControll inherits Rectangle{
+    border-radius: 8px;
+    border-width: 2px;
+    in property <brush> text_color:white;
+    in-out property <brush> widget_background;
+    in-out property <[LightObject]> light_controll_g1;
+    in-out property <[LightObject]> light_controll_g2;
+    callback g1_status(string,bool);
+    callback g2_status(string,bool);
+    callback g2_ownership(string,bool);
+    callback g1_ownership(string,bool);
+    background: widget_background;
+    border-color: self.background.brighter(0.25);
+    GridLayout {
+        padding: 10px;
+        spacing: 10px;
+        Row {
+            for room[index] in ["Кухня","Прихожая","Зал","Кладовая"] : room_rect_1:= Rectangle{
+                min-height: 30px;
+                border-radius: 8px;
+                border-width: 2px;
+                background: widget_background.brighter(0.25);
+                border-color: light_controll_g1[index].is-on ? darkcyan : self.background.brighter(0.25);
+                TouchArea {
+                    clicked => {
+                        light_controll_g1[index].is-on=!light_controll_g1[index].is-on;
+                        g1_status(light_controll_g1[index].name,light_controll_g1[index].is-on);
+                    }
+                }
+                Text {
+                    text: room;
+                    color: text_color;
+                    horizontal-alignment: center;
+                    font-size: 16px;
+                    vertical-alignment: top;
+                }
+            }
+        }
+        Row {
+            for room[index] in ["ЦУ","Уборная","Ванная","Покои"] : room_rect_2:= HorizontalLayout{
+                    spacing: 10px;
+                    Rectangle {
+                        width: 32px;
+                        border-radius: 8px;
+                        border-width: 2px;
+                        background: widget_background.brighter(0.25);
+                        border-color: self.background.brighter(0.25);
+                        TouchArea {
+                            clicked => {
+                                light_controll_g2[index].ownship=!light_controll_g2[index].ownship;
+                                g2_ownership(light_controll_g2[index].name, light_controll_g2[index].ownship);
+                            }
+                        }
+                        Rectangle {
+                            width: 26px;
+                            height: 26px;
+                            border-radius: 13px;
+                            background: white;
+                            y:light_controll_g2[index].ownship? parent.y + 3px : parent.height - 26px - 3px;
+                            animate y { duration: 150ms; easing: ease-in-out; }
+                        }
+                    }
+                    Rectangle{
+                        min-height: 30px;
+                        border-radius: 8px;
+                        border-width: 2px;
+                        background: widget_background.brighter(0.25);
+                        border-color: light_controll_g2[index].is-on ? darkcyan : self.background.brighter(0.25);
+                        animate background { duration: 150ms; }
+                        animate border-color { duration: 150ms; }
+                        TouchArea {
+                            clicked => {
+                                light_controll_g2[index].is-on=!light_controll_g2[index].is-on;
+                                light_controll_g2[index].ownship = light_controll_g2[index].is-on? true : light_controll_g2[index].ownship;
+                                g2_ownership(light_controll_g2[index].name, light_controll_g2[index].ownship);
+                                g2_status(light_controll_g2[index].name,light_controll_g2[index].is-on);
+                            }
+                        }
+                        Text {
+                            text: room;
+                            color: text_color;
+                            horizontal-alignment: center;
+                            font-size: 16px;
+                            vertical-alignment: top;
+                        }
+                    }
+            }
+        }
+    }
+}

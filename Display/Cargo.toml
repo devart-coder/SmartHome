@@ -1,0 +1,43 @@
+[package]
+edition      = "2024"
+name         = "Display"
+rust-version = "1.88"
+version      = "0.1.0"
+resolver = "2"
+
+[dependencies]
+critical-section = { version = "1.1", features = ["std"] }
+esp-idf-sys = { version = "0.37.2", features = ["binstart", "native"] }
+esp-idf-svc = {version="0.52.1",features = ["alloc"]}
+esp-idf-hal = "0.46.2"
+anyhow = "1.0.104"
+log = "0.4.34"
+esp_idf_logger = "0.1.1"
+embedded-graphics = "0.8.2"
+embedded-graphics-framebuf = "0.5.0"
+
+slint = { version = "1.9", default-features = false, features = ["compat-1-2", "unsafe-single-threaded", "renderer-software", "libm"] }
+bmp180-driver = "0.1.1"
+chrono = {version="0.4.45", default-features = false, features = ["clock", "alloc"]}
+tinyjson = "2.5.1"
+mqttrs = "0.4.1"
+
+
+[profile.dev]
+opt-level = "s"       # Оптимизация по размеру кода (критично для ldproxy!)
+panic = "abort"       # Убирает тяжелые таблицы развертки стека (unwind tables)
+overflow-checks = false
+incremental = false
+debug = 1             # Оставляем базовую отладку для логов, убирая лишнее
+
+
+[profile.release]
+# codegen-units = 1     # LLVM can perform better optimizations using a single thread
+# debug         = 2     # prefer slower builds but better debugging experience
+# lto           = 'fat'
+panic = "abort"
+opt-level     = "s"
+
+[build-dependencies]
+embuild =  { version = "0.33", features = ["espidf"] }
+slint-build = "1.9"
