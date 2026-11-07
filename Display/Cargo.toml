@@ -1,6 +1,6 @@
 [package]
 edition      = "2024"
-name         = "Display"
+name         = "master_display"
 rust-version = "1.88"
 version      = "0.1.0"
 resolver = "2"

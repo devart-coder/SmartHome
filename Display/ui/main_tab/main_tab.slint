@@ -4,14 +4,13 @@ import { MediaPlayer } from "media_player.slint";
 import { LightControll, LightObject } from "light_controll.slint";
 import { Slider, VerticalBox, HorizontalBox, Spinner } from "std-widgets.slint";
 import { ConditionerControll } from "conditioner_control.slint";
+import { Theme } from "../themes.slint";
 export component MainTab inherits Rectangle{
     in-out property <string> time: "____, --:-- --.--.--";
     in-out property <string> temperature: "--";
     in-out property <string> pressure: "--";
     in-out property <string> altitude: "--";
     in-out property <WeatherFact> weather;
-    in property <brush> widget_background_color;
-    in property <brush> front_color;
     in-out property <string> wifi_status:"offline";
     in-out property <string> weather_status: "offline";
     in-out property <int> conditioner_value:25;
@@ -40,12 +39,8 @@ export component MainTab inherits Rectangle{
                     temperature: temperature;
                     pressure: pressure;
                     altitude: altitude;
-                    background: widget_background_color;
-                    device_background_color:widget_background_color.brighter(0.25);
-                    text_color: front_color.darker(0.25);
-                    header_color: front_color;
-                    border-color: widget_background_color.brighter(0.25);
-                    border-width: 2px;
+                    border-color: Theme.border-color;
+                    border-width: Theme.border-width;
                     horizontal-stretch: 5;
                     height: 50%;
                     wifi_status: wifi_status;
@@ -64,7 +59,6 @@ export component MainTab inherits Rectangle{
                 // in-out property <int> current_mode:-1;
                 spacing: 10px;
                 LightControll {
-                    widget_background: widget_background_color;
                     light_controll_g1: light_controll_g1;
                     light_controll_g2: light_controll_g2;
                     g1_status(string,bool) => {root.g1_status(string,bool)};

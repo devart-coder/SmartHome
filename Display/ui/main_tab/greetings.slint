@@ -1,11 +1,12 @@
 import { YandexWeatherFact } from "yandex_weather.slint";
+import { Theme } from "../themes.slint";
 export component Greetings inherits Rectangle {
-    in property <brush> device_background_color;
-    in property <brush> text_color;
-    in property <brush> header_color;
-    private property <brush> hot_color:#ff5722;
-    private property <brush> cold_color:#00bcd4;
-    private property <brush> warm_color:#E69A3B;
+    in-out property <color> device_background_color:Theme.background-color;
+    in property <color> text_color:Theme.text-color;
+    in property <color> header_color:Theme.text-color;
+    private property <color> hot_color:#ff5722;
+    private property <color> cold_color:#00bcd4;
+    private property <color> warm_color:#E69A3B;
     in property <string> greetings;
     in-out property <string> temperature;
     in-out property <string> time;
@@ -44,17 +45,20 @@ export component Greetings inherits Rectangle {
                         mqtt_image:=Image {
                             source: @image-url("../icons/mqtt-icon-solid.svg");
                             horizontal-alignment: ImageHorizontalAlignment.right;
+                            animate colorize { duration: 250ms; easing: ease-in-out; }
                         }
                         timer:=Timer {
                             interval: 500ms;
-                            running: mqtt_status == "connecting";
+                            running: true;
                             property <bool> status: false;
                             triggered => {
                                 if(!status){
                                     mqtt_image.colorize=header_color.darker(2);
+                                    status=!status;
                                 }
                                 else{
                                     mqtt_image.colorize=header_color;
+                                    status=!status;
                                 }
                             }
                         }

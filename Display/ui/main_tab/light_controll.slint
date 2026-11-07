@@ -1,32 +1,31 @@
 import { StandardButton, VerticalBox } from "std-widgets.slint";
+import { Theme } from "../themes.slint";
 export struct LightObject{
     name:string,
     ownship:bool,
     is_on:bool,
 }
 export component LightControll inherits Rectangle{
-    border-radius: 8px;
-    border-width: 2px;
-    in property <brush> text_color:white;
-    in-out property <brush> widget_background;
+    border-radius: Theme.border-radius;
+    border-width: Theme.border-width;
+    background: Theme.background-color;
+    border-color: self.background.brighter(0.25);
     in-out property <[LightObject]> light_controll_g1;
     in-out property <[LightObject]> light_controll_g2;
     callback g1_status(string,bool);
     callback g2_status(string,bool);
     callback g2_ownership(string,bool);
     callback g1_ownership(string,bool);
-    background: widget_background;
-    border-color: self.background.brighter(0.25);
     GridLayout {
         padding: 10px;
         spacing: 10px;
         Row {
             for room[index] in ["Кухня","Прихожая","Зал","Кладовая"] : room_rect_1:= Rectangle{
                 min-height: 30px;
-                border-radius: 8px;
-                border-width: 2px;
-                background: widget_background.brighter(0.25);
-                border-color: light_controll_g1[index].is-on ? darkcyan : self.background.brighter(0.25);
+                border-radius: Theme.border-radius;
+                border-width: Theme.border-width;
+                background: Theme.background-color.brighter(0.25);
+                border-color: light_controll_g1[index].is-on ? Theme.border-color : self.background.brighter(0.25);
                 TouchArea {
                     clicked => {
                         light_controll_g1[index].is-on=!light_controll_g1[index].is-on;
@@ -35,7 +34,7 @@ export component LightControll inherits Rectangle{
                 }
                 Text {
                     text: room;
-                    color: text_color;
+                    color: Theme.text-color;
                     horizontal-alignment: center;
                     font-size: 16px;
                     vertical-alignment: top;
@@ -47,9 +46,9 @@ export component LightControll inherits Rectangle{
                     spacing: 10px;
                     Rectangle {
                         width: 32px;
-                        border-radius: 8px;
-                        border-width: 2px;
-                        background: widget_background.brighter(0.25);
+                        border-radius: Theme.border-radius;
+                        border-width: Theme.border-width;
+                        background: Theme.background-color.brighter(0.25);
                         border-color: self.background.brighter(0.25);
                         TouchArea {
                             clicked => {
@@ -61,19 +60,23 @@ export component LightControll inherits Rectangle{
                             width: 26px;
                             height: 26px;
                             border-radius: 13px;
-                            background: white;
+                            background: Theme.background-color.brighter(0.25);
+                            border-color: light_controll_g2[index].ownship ? Theme.border-color : self.background.brighter(1.25);
+                            border-width: Theme.border-width;
                             y:light_controll_g2[index].ownship? parent.y + 3px : parent.height - 26px - 3px;
-                            animate y { duration: 150ms; easing: ease-in-out; }
+                            animate y { duration: 250ms; easing: ease-in-out; }
+                            // animate background { duration: 250ms; }
+                            animate border-color { duration: 250ms; }
                         }
                     }
                     Rectangle{
                         min-height: 30px;
-                        border-radius: 8px;
-                        border-width: 2px;
-                        background: widget_background.brighter(0.25);
-                        border-color: light_controll_g2[index].is-on ? darkcyan : self.background.brighter(0.25);
-                        animate background { duration: 150ms; }
-                        animate border-color { duration: 150ms; }
+                        border-radius: Theme.border-radius;
+                        border-width: Theme.border-width;
+                        background: Theme.background-color.brighter(0.25);
+                        border-color: light_controll_g2[index].is-on ? Theme.border-color : self.background.brighter(0.25);
+                        animate background { duration: 250ms; }
+                        animate border-color { duration: 250ms; }
                         TouchArea {
                             clicked => {
                                 light_controll_g2[index].is-on=!light_controll_g2[index].is-on;
@@ -84,7 +87,7 @@ export component LightControll inherits Rectangle{
                         }
                         Text {
                             text: room;
-                            color: text_color;
+                            color: Theme.text-color;
                             horizontal-alignment: center;
                             font-size: 16px;
                             vertical-alignment: top;
