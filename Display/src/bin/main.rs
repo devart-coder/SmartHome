@@ -7,6 +7,7 @@ use esp_idf_svc::sntp::{EspSntp, SyncStatus};
 use esp_idf_svc::wifi::AuthMethod;
 use log::{error, info, warn};
 use master_display::display::Display;
+use master_display::mqtt_manager::MqttClientManager;
 use master_display::security::{BROKER_URL, LightSubscriptions, PASSWORD, SDDI};
 use master_display::ui::{GlobalConnectionsStatus, GlobalLightControllGroups, MainWindow};
 use master_display::wifi::Wifi;
@@ -138,7 +139,18 @@ fn main() {
     }
     let mrx = Arc::new(Mutex::new(rx));
     let _mrx_clone = mrx.clone();
-    let (client, mut connection) = EspMqttClient::new(
+    // let client = MqttClientManager::new(
+    //     BROKER_URL,
+    //     &MqttClientConfiguration {
+    //         client_id: Some("Display_7'"),
+    //         keep_alive_interval: Some(Duration::from_secs(60)),
+    //         disable_clean_session: false,
+    //         username: None,
+    //         password: None,
+    //         ..Default::default()
+    //     },
+    // );
+    let client = MqttClientManager::new(
         BROKER_URL,
         &MqttClientConfiguration {
             client_id: Some("Display_7'"),
@@ -148,305 +160,207 @@ fn main() {
             password: None,
             ..Default::default()
         },
-    )
-    .unwrap();
-    // {
-    // Ok((client, mut connection)) => {
-    let client_guard = Arc::new(Mutex::new(client));
-    let c = client_guard.clone();
-    let connection_handle = move || {
-        while let Ok(event) = connection.next() {
-            match event.payload() {
-                EventPayload::Connected(_) => {
-                    info!("Успешно подключились к MQTT-брокеру!");
-                    if let Err(e) = tx.send("connected") {
-                        error!("[SendError]: {}", e);
-                    }
-                }
-                EventPayload::Disconnected => {
-                    warn!("Потеряно соединение с MQTT-брокером. Переподключение...");
-                    if let Err(e) = tx.send("disconnected") {
-                        error!("[SendError]: {}", e);
-                    }
-                }
-                EventPayload::Error(e) => {
-                    log::error!("Error: {e}");
-                    if let Err(e) = tx.send("disconnected") {
-                        error!("[SendError]: {e}");
-                    }
-                }
-                EventPayload::Received {
-                    id,
-                    topic,
-                    data,
-                    details,
-                } => {
-                    info!("Received: {id} {} {:?} {:?}", topic.unwrap(), data, details);
-                }
-                EventPayload::Deleted(v) => {
-                    info!("Deleted: {v}");
-                }
-                EventPayload::Published(v) => {
-                    info!("Published: {v}");
-                }
-                EventPayload::Subscribed(v) => {
-                    info!("Syubscribed: {v}");
-                }
-                _ => {}
-            }
-        }
-    };
-    thread::spawn(connection_handle);
-    let mrx_clone = mrx.clone();
-    let subscribe = move || {
-        let ui_weak = ui.clone();
-        while let Ok(v) = mrx_clone.lock().unwrap().recv() {
-            if v == "connected" {
-                ui_weak
-                    .unwrap()
-                    .global::<GlobalConnectionsStatus>()
-                    .set_mqtt_status(v.into());
-                let topics = vec![
-                    LightSubscriptions::ControllRoom.topic(),
-                    LightSubscriptions::ControllRoom.topic_with_ownership(),
-                    LightSubscriptions::Restroom.topic(),
-                    LightSubscriptions::Restroom.topic_with_ownership(),
-                    LightSubscriptions::Bathroom.topic(),
-                    LightSubscriptions::Bathroom.topic_with_ownership(),
-                    LightSubscriptions::Breakroom.topic(),
-                    LightSubscriptions::Breakroom.topic_with_ownership(),
-                ];
-                for topic in topics {
-                    let result = c
-                        .lock()
-                        .unwrap()
-                        .subscribe(topic.as_str(), QoS::AtLeastOnce);
-                    match result {
-                        Err(e) => {
-                            error!("Не удалось подписаться на топик {}: {:?}", topic, e)
-                        }
-                        Ok(_) => info!("Успешная подписка на топик: {}", topic),
-                    }
-                }
-            } else if v == "disconnected" {
-                ui_weak
-                    .unwrap()
-                    .global::<GlobalConnectionsStatus>()
-                    .set_mqtt_status("disconnected".into());
-            } else if v == "connecting" {
-                ui_weak
-                    .clone()
-                    .unwrap()
-                    .global::<GlobalConnectionsStatus>()
-                    .set_mqtt_status(v.into());
-            }
-        }
-    };
-    thread::spawn(subscribe);
-    let c = client_guard.clone();
-    main_window
-        .global::<GlobalLightControllGroups>()
-        .on_g2_status(move |name, status| {
-            info!("Name : {} Status:{}", name, status);
-            let mut c_lock = c.lock().unwrap();
-            if name == LightSubscriptions::ControllRoom.name() {
-                if status == true {
-                    c_lock
-                        .publish(
-                            LightSubscriptions::ControllRoom.topic().as_str(),
-                            QoS::AtLeastOnce,
-                            true,
-                            b"on",
-                        )
-                        .unwrap();
-                } else {
-                    c_lock
-                        .publish(
-                            LightSubscriptions::ControllRoom.topic().as_str(),
-                            QoS::AtLeastOnce,
-                            true,
-                            b"off",
-                        )
-                        .unwrap();
-                }
-            } else if name == LightSubscriptions::Restroom.name() {
-                if status == true {
-                    c_lock
-                        .publish(
-                            LightSubscriptions::Restroom.topic().as_str(),
-                            QoS::AtLeastOnce,
-                            true,
-                            b"on",
-                        )
-                        .unwrap();
-                } else {
-                    c_lock
-                        .publish(
-                            LightSubscriptions::Restroom.topic().as_str(),
-                            QoS::AtLeastOnce,
-                            true,
-                            b"off",
-                        )
-                        .unwrap();
-                }
-            } else if name == LightSubscriptions::Bathroom.name() {
-                if status == true {
-                    c_lock
-                        .publish(
-                            LightSubscriptions::Bathroom.topic().as_str(),
-                            QoS::AtLeastOnce,
-                            true,
-                            b"on",
-                        )
-                        .unwrap();
-                } else {
-                    c_lock
-                        .publish(
-                            LightSubscriptions::Bathroom.topic().as_str(),
-                            QoS::AtLeastOnce,
-                            true,
-                            b"off",
-                        )
-                        .unwrap();
-                }
-            } else if name == LightSubscriptions::Breakroom.name() {
-                if status == true {
-                    c_lock
-                        .publish(
-                            LightSubscriptions::Breakroom.topic().as_str(),
-                            QoS::AtLeastOnce,
-                            true,
-                            b"on",
-                        )
-                        .unwrap();
-                } else {
-                    c_lock
-                        .publish(
-                            LightSubscriptions::Breakroom.topic().as_str(),
-                            QoS::AtLeastOnce,
-                            true,
-                            b"off",
-                        )
-                        .unwrap();
-                }
-            }
-        });
-    let c = client_guard.clone();
-    main_window
-        .global::<GlobalLightControllGroups>()
-        .on_g2_ownership(move |name, status| {
-            info!("Name : {} Status:{}", name, status);
-            let mut c_lock = c.lock().unwrap();
-            if name == LightSubscriptions::ControllRoom.name() {
-                if status == true {
-                    c_lock
-                        .publish(
-                            LightSubscriptions::ControllRoom
-                                .topic_with_ownership()
-                                .as_str(),
-                            QoS::AtLeastOnce,
-                            true,
-                            b"on",
-                        )
-                        .unwrap();
-                } else {
-                    c_lock
-                        .publish(
-                            LightSubscriptions::ControllRoom
-                                .topic_with_ownership()
-                                .as_str(),
-                            QoS::AtLeastOnce,
-                            true,
-                            b"off",
-                        )
-                        .unwrap();
-                }
-            } else if name == LightSubscriptions::Restroom.name() {
-                if status == true {
-                    c_lock
-                        .publish(
-                            LightSubscriptions::Restroom.topic_with_ownership().as_str(),
-                            QoS::AtLeastOnce,
-                            true,
-                            b"on",
-                        )
-                        .unwrap();
-                } else {
-                    c_lock
-                        .publish(
-                            LightSubscriptions::Restroom.topic_with_ownership().as_str(),
-                            QoS::AtLeastOnce,
-                            true,
-                            b"off",
-                        )
-                        .unwrap();
-                }
-            } else if name == LightSubscriptions::Bathroom.name() {
-                if status == true {
-                    c_lock
-                        .publish(
-                            LightSubscriptions::Bathroom.topic_with_ownership().as_str(),
-                            QoS::AtLeastOnce,
-                            true,
-                            b"on",
-                        )
-                        .unwrap();
-                } else {
-                    c_lock
-                        .publish(
-                            LightSubscriptions::Bathroom.topic_with_ownership().as_str(),
-                            QoS::AtLeastOnce,
-                            true,
-                            b"off",
-                        )
-                        .unwrap();
-                }
-            } else if name == LightSubscriptions::Breakroom.name() {
-                if status == true {
-                    c_lock
-                        .publish(
-                            LightSubscriptions::Breakroom
-                                .topic_with_ownership()
-                                .as_str(),
-                            QoS::AtLeastOnce,
-                            true,
-                            b"on",
-                        )
-                        .unwrap();
-                } else {
-                    c_lock
-                        .publish(
-                            LightSubscriptions::Breakroom
-                                .topic_with_ownership()
-                                .as_str(),
-                            QoS::AtLeastOnce,
-                            true,
-                            b"off",
-                        )
-                        .unwrap();
-                }
-            }
-        });
-    // }
-    // Err(err) => {
-    // error!("Критическая ошибка: {err}");
-    // FreeRtos::delay_ms(5000);
-    // }
-    // };
+    );
+    client.execute();
+
+    // let c = client_guard.clone();
+    // main_window
+    //     .global::<GlobalLightControllGroups>()
+    //     .on_g2_status(move |name, status| {
+    //         info!("Name : {} Status:{}", name, status);
+    //         let mut c_lock = c.lock().unwrap();
+    //         if name == LightSubscriptions::ControllRoom.name() {
+    //             if status == true {
+    //                 c_lock
+    //                     .publish(
+    //                         LightSubscriptions::ControllRoom.topic().as_str(),
+    //                         QoS::AtLeastOnce,
+    //                         true,
+    //                         b"on",
+    //                     )
+    //                     .unwrap();
+    //             } else {
+    //                 c_lock
+    //                     .publish(
+    //                         LightSubscriptions::ControllRoom.topic().as_str(),
+    //                         QoS::AtLeastOnce,
+    //                         true,
+    //                         b"off",
+    //                     )
+    //                     .unwrap();
+    //             }
+    //         } else if name == LightSubscriptions::Restroom.name() {
+    //             if status == true {
+    //                 c_lock
+    //                     .publish(
+    //                         LightSubscriptions::Restroom.topic().as_str(),
+    //                         QoS::AtLeastOnce,
+    //                         true,
+    //                         b"on",
+    //                     )
+    //                     .unwrap();
+    //             } else {
+    //                 c_lock
+    //                     .publish(
+    //                         LightSubscriptions::Restroom.topic().as_str(),
+    //                         QoS::AtLeastOnce,
+    //                         true,
+    //                         b"off",
+    //                     )
+    //                     .unwrap();
+    //             }
+    //         } else if name == LightSubscriptions::Bathroom.name() {
+    //             if status == true {
+    //                 c_lock
+    //                     .publish(
+    //                         LightSubscriptions::Bathroom.topic().as_str(),
+    //                         QoS::AtLeastOnce,
+    //                         true,
+    //                         b"on",
+    //                     )
+    //                     .unwrap();
+    //             } else {
+    //                 c_lock
+    //                     .publish(
+    //                         LightSubscriptions::Bathroom.topic().as_str(),
+    //                         QoS::AtLeastOnce,
+    //                         true,
+    //                         b"off",
+    //                     )
+    //                     .unwrap();
+    //             }
+    //         } else if name == LightSubscriptions::Breakroom.name() {
+    //             if status == true {
+    //                 c_lock
+    //                     .publish(
+    //                         LightSubscriptions::Breakroom.topic().as_str(),
+    //                         QoS::AtLeastOnce,
+    //                         true,
+    //                         b"on",
+    //                     )
+    //                     .unwrap();
+    //             } else {
+    //                 c_lock
+    //                     .publish(
+    //                         LightSubscriptions::Breakroom.topic().as_str(),
+    //                         QoS::AtLeastOnce,
+    //                         true,
+    //                         b"off",
+    //                     )
+    //                     .unwrap();
+    //             }
+    //         }
+    //     });
+    // let c = client_guard.clone();
+    // main_window
+    //     .global::<GlobalLightControllGroups>()
+    //     .on_g2_ownership(move |name, status| {
+    //         info!("Name : {} Status:{}", name, status);
+    //         let mut c_lock = c.lock().unwrap();
+    //         if name == LightSubscriptions::ControllRoom.name() {
+    //             if status == true {
+    //                 c_lock
+    //                     .publish(
+    //                         LightSubscriptions::ControllRoom
+    //                             .topic_with_ownership()
+    //                             .as_str(),
+    //                         QoS::AtLeastOnce,
+    //                         true,
+    //                         b"on",
+    //                     )
+    //                     .unwrap();
+    //             } else {
+    //                 c_lock
+    //                     .publish(
+    //                         LightSubscriptions::ControllRoom
+    //                             .topic_with_ownership()
+    //                             .as_str(),
+    //                         QoS::AtLeastOnce,
+    //                         true,
+    //                         b"off",
+    //                     )
+    //                     .unwrap();
+    //             }
+    //         } else if name == LightSubscriptions::Restroom.name() {
+    //             if status == true {
+    //                 c_lock
+    //                     .publish(
+    //                         LightSubscriptions::Restroom.topic_with_ownership().as_str(),
+    //                         QoS::AtLeastOnce,
+    //                         true,
+    //                         b"on",
+    //                     )
+    //                     .unwrap();
+    //             } else {
+    //                 c_lock
+    //                     .publish(
+    //                         LightSubscriptions::Restroom.topic_with_ownership().as_str(),
+    //                         QoS::AtLeastOnce,
+    //                         true,
+    //                         b"off",
+    //                     )
+    //                     .unwrap();
+    //             }
+    //         } else if name == LightSubscriptions::Bathroom.name() {
+    //             if status == true {
+    //                 c_lock
+    //                     .publish(
+    //                         LightSubscriptions::Bathroom.topic_with_ownership().as_str(),
+    //                         QoS::AtLeastOnce,
+    //                         true,
+    //                         b"on",
+    //                     )
+    //                     .unwrap();
+    //             } else {
+    //                 c_lock
+    //                     .publish(
+    //                         LightSubscriptions::Bathroom.topic_with_ownership().as_str(),
+    //                         QoS::AtLeastOnce,
+    //                         true,
+    //                         b"off",
+    //                     )
+    //                     .unwrap();
+    //             }
+    //         } else if name == LightSubscriptions::Breakroom.name() {
+    //             if status == true {
+    //                 c_lock
+    //                     .publish(
+    //                         LightSubscriptions::Breakroom
+    //                             .topic_with_ownership()
+    //                             .as_str(),
+    //                         QoS::AtLeastOnce,
+    //                         true,
+    //                         b"on",
+    //                     )
+    //                     .unwrap();
+    //             } else {
+    //                 c_lock
+    //                     .publish(
+    //                         LightSubscriptions::Breakroom
+    //                             .topic_with_ownership()
+    //                             .as_str(),
+    //                         QoS::AtLeastOnce,
+    //                         true,
+    //                         b"off",
+    //                     )
+    //                     .unwrap();
+    //             }
+    //         }
+    //     });
     let ui = main_window.as_weak();
-    let client_guard = client_guard.clone();
-    main_window
-        .global::<GlobalConnectionsStatus>()
-        .on_mqtt_button_pressed(move || {
-            let current_mqtt_status = ui
-                .unwrap()
-                .global::<GlobalConnectionsStatus>()
-                .get_mqtt_status();
-            if current_mqtt_status == "disconnected" {
-                // connection.
-            } else if current_mqtt_status == "connected" {
-            }
-        });
+    // let client_guard = client_guard.clone();
+    // main_window
+    //     .global::<GlobalConnectionsStatus>()
+    //     .on_mqtt_button_pressed(move || {
+    //         let current_mqtt_status = ui
+    //             .unwrap()
+    //             .global::<GlobalConnectionsStatus>()
+    //             .get_mqtt_status();
+    //         if current_mqtt_status == "disconnected" {
+    //             // connection.
+    //         } else if current_mqtt_status == "connected" {
+    //         }
+    //     });
     //---------------------------------------------------------//
     loop {
         display.handle_touch_pad();

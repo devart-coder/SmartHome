@@ -1,125 +1,134 @@
 use std::{
     sync::{Arc, Mutex},
-    time::Duration,
+    thread,
 };
 
-use esp_idf_svc::mqtt::client::{self, EspMqttClient, MqttClientConfiguration};
+use esp_idf_svc::mqtt::client::{
+    EspMqttClient, EspMqttConnection, EventPayload, MqttClientConfiguration, QoS,
+};
+use log::{info, warn};
 
-use crate::security::BROKER_URL;
+use crate::security::LightSubscriptions;
 
 pub struct MqttClientManager {
     client: Arc<Mutex<Option<EspMqttClient<'static>>>>,
-    url: &'static str,
-    config: MqttClientConfiguration<'static>,
+    connection: Arc<Mutex<Option<EspMqttConnection>>>,
 }
 impl MqttClientManager {
-    pub fn new(url: &'static str, config: MqttClientConfiguration<'static>) -> Self {
-        Self {
+    pub fn new(url: &'static str, config: &MqttClientConfiguration<'static>) -> Self {
+        let s = Self {
             client: Arc::new(Mutex::new(None)),
-            config,
-            url,
-        }
+            connection: Arc::new(Mutex::new(None)),
+        };
+        match EspMqttClient::new(url, config) {
+            Ok((cli, con)) => {
+                *s.connection.lock().unwrap() = Some(con);
+                *s.client.lock().unwrap() = Some(cli);
+            }
+            Err(_) => {
+                *s.connection.lock().unwrap() = None;
+                *s.client.lock().unwrap() = None;
+            }
+        };
+        s
     }
-    // pub fn execute(){};
+
     pub fn restart() {}
-    pub fn start(&self) {
-        // {
-        //     *self.client.lock().unwrap() = match EspMqttClient::new(self.url, &self.config) {
-        //         Ok(v) => Some(v.0),
-        //         Err(e) => None,
-        //     };
-        // }
-        // let client_guard = Arc::new(Mutex::new(client));
-        // let c = client_guard.clone();
-        // let connection_handle = move || {
-        //     while let Ok(event) = connection.next() {
-        //         match event.payload() {
-        //             EventPayload::Connected(_) => {
-        //                 info!("Успешно подключились к MQTT-брокеру!");
-        //                 if let Err(e) = tx.send("connected") {
-        //                     error!("[SendError]: {}", e);
-        //                 }
-        //             }
-        //             EventPayload::Disconnected => {
-        //                 warn!("Потеряно соединение с MQTT-брокером. Переподключение...");
-        //                 if let Err(e) = tx.send("disconnected") {
-        //                     error!("[SendError]: {}", e);
-        //                 }
-        //             }
-        //             EventPayload::Error(e) => {
-        //                 log::error!("Error: {e}");
-        //                 if let Err(e) = tx.send("disconnected") {
-        //                     error!("[SendError]: {e}");
-        //                 }
-        //             }
-        //             EventPayload::Received {
-        //                 id,
-        //                 topic,
-        //                 data,
-        //                 details,
-        //             } => {
-        //                 info!("Received: {id} {} {:?} {:?}", topic.unwrap(), data, details);
-        //             }
-        //             EventPayload::Deleted(v) => {
-        //                 info!("Deleted: {v}");
-        //             }
-        //             EventPayload::Published(v) => {
-        //                 info!("Published: {v}");
-        //             }
-        //             EventPayload::Subscribed(v) => {
-        //                 info!("Syubscribed: {v}");
-        //             }
-        //             _ => {}
-        //         }
-        //     }
-        // };
-        // thread::spawn(connection_handle);
-        // let mrx_clone = mrx.clone();
-        // let subscribe = move || {
-        //     let ui_weak = ui.clone();
-        //     while let Ok(v) = mrx_clone.lock().unwrap().recv() {
-        //         if v == "connected" {
-        //             ui_weak
-        //                 .unwrap()
-        //                 .global::<GlobalConnectionsStatus>()
-        //                 .set_mqtt_status(v.into());
-        //             let topics = vec![
-        //                 LightSubscriptions::ControllRoom.topic(),
-        //                 LightSubscriptions::ControllRoom.topic_with_ownership(),
-        //                 LightSubscriptions::Restroom.topic(),
-        //                 LightSubscriptions::Restroom.topic_with_ownership(),
-        //                 LightSubscriptions::Bathroom.topic(),
-        //                 LightSubscriptions::Bathroom.topic_with_ownership(),
-        //                 LightSubscriptions::Breakroom.topic(),
-        //                 LightSubscriptions::Breakroom.topic_with_ownership(),
-        //             ];
-        //             for topic in topics {
-        //                 let result = c
-        //                     .lock()
-        //                     .unwrap()
-        //                     .subscribe(topic.as_str(), QoS::AtLeastOnce);
-        //                 match result {
-        //                     Err(e) => {
-        //                         error!("Не удалось подписаться на топик {}: {:?}", topic, e)
-        //                     }
-        //                     Ok(_) => info!("Успешная подписка на топик: {}", topic),
-        //                 }
-        //             }
-        //         } else if v == "disconnected" {
-        //             ui_weak
-        //                 .unwrap()
-        //                 .global::<GlobalConnectionsStatus>()
-        //                 .set_mqtt_status("disconnected".into());
-        //         } else if v == "connecting" {
-        //             ui_weak
-        //                 .clone()
-        //                 .unwrap()
-        //                 .global::<GlobalConnectionsStatus>()
-        //                 .set_mqtt_status(v.into());
-        //         }
-        //     }
-        // };
-        // thread::spawn(subscribe);
+    pub fn execute(&self) {
+        let con_guard = self.connection.clone();
+        let cli_guard = self.client.clone();
+        thread::spawn(move || {
+            let mut counter = 0;
+            let mut con = match con_guard.lock().unwrap().take() {
+                Some(c) => c,
+                None => {
+                    log::error!("Соединение уже запущено или не инициализировано");
+                    return;
+                }
+            };
+            while let Ok(event) = con.next() {
+                match event.payload() {
+                    EventPayload::Connected(_) => {
+                        let cli_guard = cli_guard.clone();
+                        info!("Успешно подключились к MQTT-брокеру!");
+                        counter = 0;
+                        thread::spawn(move || {
+                            let topics = vec![
+                                LightSubscriptions::ControllRoom.topic(),
+                                LightSubscriptions::ControllRoom.topic_with_ownership(),
+                                LightSubscriptions::Restroom.topic(),
+                                LightSubscriptions::Restroom.topic_with_ownership(),
+                                LightSubscriptions::Bathroom.topic(),
+                                LightSubscriptions::Bathroom.topic_with_ownership(),
+                                LightSubscriptions::Breakroom.topic(),
+                                LightSubscriptions::Breakroom.topic_with_ownership(),
+                            ];
+                            for topic in topics {
+                                match cli_guard.lock().unwrap().as_mut() {
+                                    Some(c) => {
+                                        let result = c.subscribe(topic.as_str(), QoS::AtLeastOnce);
+                                        match result {
+                                            Err(e) => {
+                                                log::error!(
+                                                    "Не удалось подписаться на топик {topic}: {:?}",
+                                                    e
+                                                )
+                                            }
+                                            Ok(_) => info!("Успешная подписка на топик: {topic}"),
+                                        }
+                                    }
+                                    None => {}
+                                };
+                            }
+                        });
+                    }
+                    EventPayload::Disconnected => {
+                        counter += 1;
+                        warn!("Потеряно соединение с MQTT-брокером. Переподключение...");
+                        info!("Попытка {counter}...");
+                        if counter >= 5 {
+                            log::error!("Сбой соединения");
+                            *cli_guard.lock().unwrap() = None;
+                            return;
+                        }
+                    }
+                    EventPayload::Error(e) => {
+                        log::error!("Error: {e}");
+                    }
+                    _ => {}
+                }
+            }
+        });
     }
-    pub fn disconnect() {}
+    // pub fn handler(&self) {}
+    // let client_guard = Arc::new(Mutex::new(client));
+    // let c = client_guard.clone();
+    // let mrx_clone = mrx.clone();
+    // let subscribe = ;
+    // thread::spawn(move || {
+    //     let topics = vec![
+    //         LightSubscriptions::ControllRoom.topic(),
+    //         LightSubscriptions::ControllRoom.topic_with_ownership(),
+    //         LightSubscriptions::Restroom.topic(),
+    //         LightSubscriptions::Restroom.topic_with_ownership(),
+    //         LightSubscriptions::Bathroom.topic(),
+    //         LightSubscriptions::Bathroom.topic_with_ownership(),
+    //         LightSubscriptions::Breakroom.topic(),
+    //         LightSubscriptions::Breakroom.topic_with_ownership(),
+    //     ];
+    //     for topic in topics {
+    //         let mut client = self.client.lock().unwrap().unwrap();
+    //         let result = client.subscribe(topic.as_str(), QoS::AtLeastOnce);
+    //         match result {
+    //             Err(e) => {
+    //                 log::error!("Не удалось подписаться на топик {topic}: {:?}", e)
+    //             }
+    //             Ok(_) => info!("Успешная подписка на топик: {topic}"),
+    //         }
+    //     }
+    // });
+    // }
+    // pub fn disconnect(&self) {
+    // *self.lock().unwrap() = None;
+    // }
 }
