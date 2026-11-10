@@ -1,9 +1,19 @@
 import { Button, Slider, Switch, ScrollView } from "std-widgets.slint";
 import { MainTab } from "main_tab/main_tab.slint";
-import { WeatherFact } from "main_tab/yandex_weather.slint";
 import { WeatherTab } from "weather_tab/weather_tab.slint";
-import { LightControll, LightObject } from "main_tab/light_controll.slint";
-import { Theme } from "themes.slint";
+import { Theme } from "global/themes.slint";
+import {
+GlobalBMP180,
+GlobalConnectionsStatus,
+GlobalLightControllGroups,
+GlobalMainTab,
+GlobalWeather} from "global/global_main_tab.slint";
+export {
+GlobalBMP180,
+GlobalConnectionsStatus,
+GlobalLightControllGroups,
+GlobalMainTab,
+GlobalWeather}
 export component MainWindow inherits Window {
     Text {
         visible: false;
@@ -11,22 +21,20 @@ export component MainWindow inherits Window {
         text: "АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯабвгдеёжзийклмнопрстуфхцчшщъыьэюя";
     }
     in-out property <image> gif-frame;
-    in-out property <string> mqtt_status;
-    background: Theme.system-background-color;
-    width: 800px;
-    height: 480px;
     in-out property <bool> is_loading: false;
     in-out property <string> boot_logs: "Инициализация системы...\n";
+    in-out property <int> current-tab: 0;
+    height: 480px;
+    width: 800px;
+    background: Theme.system-background-color;
     if(root.is_loading):Rectangle{
-        background: #000000;
+        background: Theme.system-background-color;
         width: 100%;
         height: 100%;
-
         VerticalLayout {
             padding: 20px;
             spacing: 10px;
             alignment: start;
-
             Text {
                 text: "[ЗАГРУЗКА СИСТЕМЫ]";
                 color: Theme.system-text-color;
@@ -45,30 +53,6 @@ export component MainWindow inherits Window {
                 }
         }
     }
-    in-out property <int> current-tab: 0;
-    in-out property <string> global-time: "____, --:-- --.--.--";
-    in-out property <string> global-temp: "--";
-    in-out property <string> global-pressure: "--";
-    in-out property <WeatherFact> global-weather;
-    in-out property <string> global-altitude:"--";
-    in-out property <string> global-wifi_status : "offline";
-    in-out property <string> global-weather_status:"offline";
-    in-out property <[LightObject]> light_controll_g1:[
-        {name:"kitchen", is_on:false},
-        {name:"hallway", is_on:false, ownship:false},
-        {name:"hall", is_on:false, ownship:false},
-        {name:"pantry", is_on:false, ownship:false},
-    ];
-    in-out property <[LightObject]> light_controll_g2:[
-        {name:"controllroom", is_on:false, ownship:false},
-        {name:"restroom" , is_on:false, ownship:false},
-        {name:"bathroom" , is_on:false, ownship:false},
-        {name:"breakroom", is_on:false, ownship:false},
-    ];
-    callback g1_status(string,bool);
-    callback g2_status(string,bool);
-    callback g2_ownership(string,bool);
-    callback g1_ownership(string,bool);
     if(!root.is_loading):HorizontalLayout {
         width: root.width;
         VerticalLayout {
@@ -93,7 +77,6 @@ export component MainWindow inherits Window {
                                 alignment: center;
                                 Text {
                                     text: tab-idx;
-                                    // color: Theme.text-color;
                                     color: root.current-tab == index ? Theme.text-color.brighter(0.25) : Theme.text-color;
                                     font-size: 36px;
                                     font-weight: 1000;
@@ -106,26 +89,8 @@ export component MainWindow inherits Window {
             }
         }
         if root.current-tab == 0 : MainTab {
-            wifi_status: global-wifi_status;
-
-            time: global-time;
-            temperature: global-temp;
-            pressure: global-pressure;
-
-            weather: global-weather;
-            altitude: global-altitude;
-            weather_status: global-weather_status;
             popup_x:root.width;
             popup_y:root.height;
-
-            light_controll_g1: light_controll_g1;
-            light_controll_g2: light_controll_g2;
-
-            mqtt_status:mqtt_status;
-            g1_status(string,bool) => {root.g1_status(string, bool)};
-            g2_status(string,bool) => {root.g2_status(string, bool)};
-            g1_ownership(string,bool) => {root.g1_ownership(string, bool)};
-            g2_ownership(string,bool) => {root.g2_ownership(string, bool)};
         }
         if root.current-tab == 3 : WeatherTab {
         }

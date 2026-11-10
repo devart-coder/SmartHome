@@ -3,6 +3,7 @@ use std::{
     net::TcpListener,
     sync::{Arc, Mutex},
     thread,
+    time::Duration,
 };
 
 use GroupOne::{
@@ -98,6 +99,13 @@ fn main() -> anyhow::Result<()> {
     for stream in listener.incoming() {
         match stream {
             Ok(socket) => {
+                let timeout = Some(Duration::from_secs(10));
+                if let Err(e) = socket.set_read_timeout(timeout) {
+                    log::error!("Не удалось установить read timeout: {:?}", e);
+                }
+                if let Err(e) = socket.set_write_timeout(timeout) {
+                    log::error!("Не удалось установить write timeout: {:?}", e);
+                }
                 let relay = relay_ptr.clone();
                 thread::spawn(move || {
                     if let Err(e) = Handler::new().handle_client(socket, relay.clone()) {

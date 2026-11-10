@@ -1,0 +1,82 @@
+// import { WeatherFact } from "../main_tab/yandex_weather.slint";
+export struct WeatherFact{
+    //Время суток на метеостанции: "d" — день, "n" — ночь.
+    daytime: string,
+    //Текущее время года
+    season:string,
+
+    //Фактическая температура воздуха прямо сейчас
+    temp: string,
+    //Ощущаемая температура воздуха с учетом влажности и ветра
+    feels_like: string,
+
+    //Текстовый код состояния погоды
+    condition: string,
+    //Текстовый код состояния иконки
+    status: string,
+
+    //Код иконки
+    icon: string,
+    //Степень облачности в долях единицы (*100%)
+    cloudness: string,
+    //Тип осадков: 0 — без осадков, 1 — дождь, 2 — дождь со снегом, 3 — снег, 4 — град.
+    prec_type: string,
+    //Вероятность выпадения осадков в процентах (0%)
+    prec_prob: string,
+    //Есть ли гроза прямо сейчас (Нет
+    is_thunder: string,
+
+    //Направление ветра строкой (Юго-Западный).
+    wind_dir: string,
+    //Скорость порывов ветра (6.7 м/с).
+    wind_gust: string,
+    //Скорость ветра в метрах в секунду (3.1 м/с).
+    wind_speed: string,
+
+    // Атмосферное давление в мм ртутного столба (762 мм рт. ст.). Самый привычный нам формат.
+    pressure_mm: string,
+    //Атмосферное давление в гектопаскалях (1015 гПа).
+    pressure_pa: string,
+    //Относительная влажность воздуха в процентах (88%).
+    humidity: string,
+}
+export struct LightObject{
+    name:string,
+    ownship:bool,
+    is_on:bool,
+}
+export global GlobalMainTab{
+    in-out property <string> time: "____, --:-- --.--.--";
+}
+export global GlobalConnectionsStatus{
+    in-out property <string> wifi_status : "offline";
+    in-out property <string> mqtt_status : "offline";
+    callback mqtt_button_pressed();
+}
+export global GlobalWeather{
+    in-out property <string> weather_status:"offline";
+    in-out property <WeatherFact> weather;
+}
+export global GlobalBMP180{
+    in-out property <string> temperature: "--";
+    in-out property <string> pressure: "--";
+    in-out property <string> altitude:"--";
+}
+export global GlobalLightControllGroups{
+    in-out property <[LightObject]> light_controll_g1:[
+        {name:"kitchen", is_on:false},
+        {name:"hallway", is_on:false, ownship:false},
+        {name:"hall", is_on:false, ownship:false},
+        {name:"pantry", is_on:false, ownship:false},
+    ];
+    in-out property <[LightObject]> light_controll_g2:[
+        {name:"controllroom", is_on:false, ownship:false},
+        {name:"restroom" , is_on:false, ownship:false},
+        {name:"bathroom" , is_on:false, ownship:false},
+        {name:"breakroom", is_on:false, ownship:false},
+    ];
+    callback g1_status(string,bool);
+    callback g2_status(string,bool);
+    callback g2_ownership(string,bool);
+    callback g1_ownership(string,bool);
+}
