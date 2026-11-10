@@ -1,5 +1,6 @@
-import { YandexWeatherFact } from "yandex_weather.slint";
-import { Theme } from "../themes.slint";
+// import { YandexWeatherFact } from "yandex_weather.slint";
+import { Theme } from "../global/themes.slint";
+import { GlobalConnectionsStatus, GlobalMainTab, GlobalBMP180 } from "../global/global_main_tab.slint";
 export component Greetings inherits Rectangle {
     in-out property <color> device_background_color:Theme.background-color;
     in property <color> text_color:Theme.text-color;
@@ -8,14 +9,7 @@ export component Greetings inherits Rectangle {
     private property <color> cold_color:#00bcd4;
     private property <color> warm_color:#E69A3B;
     in property <string> greetings;
-    in-out property <string> temperature;
-    in-out property <string> time;
-    in-out property <string> pressure;
-    in-out property <string> altitude;
-    in-out property <string> wifi_status:"offline";
-    in-out property <string> mqtt_status;
-
-    border-radius: 8px;
+    border-radius: Theme.border-radius;
     clip: true;
     Image {
         width: 100%;
@@ -28,7 +22,7 @@ export component Greetings inherits Rectangle {
         padding: 10px;
         Rectangle {
             background: black.with-alpha(0.7);
-            border-radius: 8px;
+            border-radius: Theme.border-radius;
             VerticalLayout {
                 padding: 10px;
                 spacing: 10px;
@@ -43,14 +37,23 @@ export component Greetings inherits Rectangle {
                     HorizontalLayout {
                         spacing: 10px;
                         mqtt_image:=Image {
+                            TouchArea {
+                               clicked => {
+                                    GlobalConnectionsStatus.mqtt_button_pressed();
+                               }
+                            }
                             source: @image-url("../icons/mqtt-icon-solid.svg");
                             horizontal-alignment: ImageHorizontalAlignment.right;
+                            colorize: GlobalConnectionsStatus.mqtt_status=="connected"?
+                            Theme.text-color:Theme.text-color.darker(2);
                             animate colorize { duration: 250ms; easing: ease-in-out; }
                         }
-                        timer:=Timer {
+                        Timer {
                             interval: 500ms;
-                            running: true;
-                            property <bool> status: false;
+                            running:
+                            GlobalConnectionsStatus.mqtt_status=="connecting"
+                            ? true : false;
+                            property <bool> status:false;
                             triggered => {
                                 if(!status){
                                     mqtt_image.colorize=header_color.darker(2);
@@ -63,7 +66,7 @@ export component Greetings inherits Rectangle {
                             }
                         }
                         Image {
-                            source: wifi_status == "online" ?
+                            source: GlobalConnectionsStatus.wifi_status == "online" ?
                                 @image-url("../icons/wifi.svg") : @image-url("../icons/wifi-off.svg");
                             colorize: header_color;
                             horizontal-alignment: ImageHorizontalAlignment.right;
@@ -71,7 +74,7 @@ export component Greetings inherits Rectangle {
                     }
                 }
                 Text {
-                    text: time;
+                    text: GlobalMainTab.time;
                     color: text_color;
                     font-size: 16px;
                     horizontal-alignment: start;
@@ -88,10 +91,14 @@ export component Greetings inherits Rectangle {
                 VerticalLayout {
                     padding: 10px;
                     Text {
-                        text: "🌡️ "+ temperature +" °C";
+                        text: "🌡️ "+ GlobalBMP180.temperature +" °C";
                         font-size: 16px;
                         padding: 10px;
-                        color: temperature > 25 ? hot_color : temperature <=25 && temperature >=18 ? warm_color : cold_color;
+                        color: GlobalBMP180.temperature > 25 ?
+                        hot_color :
+                        GlobalBMP180.temperature <=25
+                        && GlobalBMP180.temperature >=18 ?
+                        warm_color : cold_color;
                     }
                 }
             }
@@ -106,7 +113,7 @@ export component Greetings inherits Rectangle {
                     Text {
                         padding: 10px;
                         color: text_color;
-                        text: "🎈 "+ pressure + " мм.рт.";
+                        text: "🎈 "+ GlobalBMP180.pressure + " мм.рт.";
                         font-size: 16px;
                     }
                 }
@@ -120,7 +127,7 @@ export component Greetings inherits Rectangle {
                     padding-top: 8px;
                     padding-bottom: 8px;
                     Text {
-                        text: "⛰️ " + altitude + " м";
+                        text: "⛰️ " + GlobalBMP180.altitude + " м";
                         font-size: 16px;
                         vertical-alignment: center;
                         color: text_color;

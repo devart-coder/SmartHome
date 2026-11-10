@@ -1,24 +1,29 @@
 pub mod display;
+pub mod mqtt_manager;
 pub mod security;
 pub mod wifi;
 pub mod yandex_weather;
 
+use crate::ui::GlobalWeather;
+use crate::yandex_weather::YandexWeatherForeCasts;
 use bmp180_driver::BMP180;
 use chrono::Local;
+use esp_idf_hal::delay::FreeRtos;
 use esp_idf_hal::i2c::I2cDriver;
 use esp_idf_svc::http::client::{Configuration, EspHttpConnection};
 use log::error;
-use slint::Timer;
+use slint::{ComponentHandle, Global, Timer};
 use slint::{ToSharedString, Weak};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
-
-use crate::yandex_weather::YandexWeatherForeCasts;
 pub mod ui {
     slint::include_modules!();
 }
 use crate::yandex_weather::YandexWeatherFact;
+use ui::GlobalBMP180;
+use ui::GlobalConnectionsStatus;
+use ui::GlobalMainTab;
 use ui::MainWindow;
 #[macro_export]
 macro_rules! to_lcd {
@@ -44,7 +49,8 @@ pub fn timer_block(ui: Weak<MainWindow>) -> Timer {
         let time = time.format("%H:%M %d.%m.%Y").to_shared_string();
         match ui.upgrade() {
             Some(ui) => {
-                ui.set_global_time(format!("{}, {}", weak, time).into());
+                ui.global::<GlobalMainTab>()
+                    .set_time(format!("{}, {}", weak, time).into());
             }
             None => error!("[Error]: time_block"),
         }
@@ -62,8 +68,7 @@ pub fn bmp_block(ui: Weak<MainWindow>, i2c_driver: Rc<RefCell<I2cDriver<'static>
         if bmp_holder.is_none() {
             unsafe {
                 let static_i2c: &mut I2cDriver<'static> = std::mem::transmute(&mut *i2c_ref);
-                let bmp_init = BMP180::new(static_i2c, esp_idf_hal::delay::FreeRtos);
-
+                let bmp_init = BMP180::new(static_i2c, FreeRtos);
                 if let Ok(bmp_ready) = bmp_init.initialize() {
                     bmp_holder = Some(bmp_ready);
                 }
@@ -74,11 +79,12 @@ pub fn bmp_block(ui: Weak<MainWindow>, i2c_driver: Rc<RefCell<I2cDriver<'static>
                 .read_all(bmp180_driver::Resolution::Standard)
                 .unwrap();
             if let Some(ui) = ui.upgrade() {
-                ui.set_global_temp(format!("{:.1}", t).into());
+                let bmp_ui = ui.global::<GlobalBMP180>();
+                bmp_ui.set_temperature(format!("{:.1}", t).into());
                 let pressure_mm_hg = p as f64 / 133.3224;
                 let press_str = format!("{:.0} ", pressure_mm_hg);
-                ui.set_global_pressure(press_str.into());
-                ui.set_global_altitude(format!("{:.0}", a).into());
+                bmp_ui.set_pressure(press_str.into());
+                bmp_ui.set_altitude(format!("{:.0}", a).into());
             }
         }
     };
@@ -109,8 +115,9 @@ pub fn yandex_weather_block(ui: Weak<MainWindow>) -> Timer {
                         Ok(result) => {
                             match YandexWeatherFact::parse(&result) {
                                 Ok(w) => {
-                                    ui.set_global_weather_status("online".into());
-                                    ui.set_global_weather(ui::WeatherFact {
+                                    let global_weather = ui.global::<GlobalWeather>();
+                                    global_weather.set_weather_status("online".into());
+                                    global_weather.set_weather(ui::WeatherFact {
                                         status: w.condition.clone(),
                                         cloudness: w.cloudness,
                                         condition: YandexWeatherFact::translate_condition(

@@ -1,21 +1,11 @@
 import { StandardButton, VerticalBox } from "std-widgets.slint";
-import { Theme } from "../themes.slint";
-export struct LightObject{
-    name:string,
-    ownship:bool,
-    is_on:bool,
-}
+import { Theme } from "../global/themes.slint";
+import { GlobalLightControllGroups } from "../global/global_main_tab.slint";
 export component LightControll inherits Rectangle{
     border-radius: Theme.border-radius;
     border-width: Theme.border-width;
     background: Theme.background-color;
     border-color: self.background.brighter(0.25);
-    in-out property <[LightObject]> light_controll_g1;
-    in-out property <[LightObject]> light_controll_g2;
-    callback g1_status(string,bool);
-    callback g2_status(string,bool);
-    callback g2_ownership(string,bool);
-    callback g1_ownership(string,bool);
     GridLayout {
         padding: 10px;
         spacing: 10px;
@@ -25,11 +15,14 @@ export component LightControll inherits Rectangle{
                 border-radius: Theme.border-radius;
                 border-width: Theme.border-width;
                 background: Theme.background-color.brighter(0.25);
-                border-color: light_controll_g1[index].is-on ? Theme.border-color : self.background.brighter(0.25);
+                border-color: GlobalLightControllGroups.light_controll_g1[index].is-on ?
+                    Theme.border-color : self.background.brighter(0.25);
                 TouchArea {
                     clicked => {
-                        light_controll_g1[index].is-on=!light_controll_g1[index].is-on;
-                        g1_status(light_controll_g1[index].name,light_controll_g1[index].is-on);
+                        GlobalLightControllGroups.light_controll_g1[index].is-on =!
+                            GlobalLightControllGroups.light_controll_g1[index].is-on;
+                        GlobalLightControllGroups.g1_status(GlobalLightControllGroups.light_controll_g1[index].name,
+                            GlobalLightControllGroups.light_controll_g1[index].is-on);
                     }
                 }
                 Text {
@@ -52,8 +45,8 @@ export component LightControll inherits Rectangle{
                         border-color: self.background.brighter(0.25);
                         TouchArea {
                             clicked => {
-                                light_controll_g2[index].ownship=!light_controll_g2[index].ownship;
-                                g2_ownership(light_controll_g2[index].name, light_controll_g2[index].ownship);
+                                 GlobalLightControllGroups.light_controll_g2[index].ownship=! GlobalLightControllGroups.light_controll_g2[index].ownship;
+                                 GlobalLightControllGroups.g2_ownership( GlobalLightControllGroups.light_controll_g2[index].name,  GlobalLightControllGroups.light_controll_g2[index].ownship);
                             }
                         }
                         Rectangle {
@@ -61,11 +54,10 @@ export component LightControll inherits Rectangle{
                             height: 26px;
                             border-radius: 13px;
                             background: Theme.background-color.brighter(0.25);
-                            border-color: light_controll_g2[index].ownship ? Theme.border-color : self.background.brighter(1.25);
+                            border-color:  GlobalLightControllGroups.light_controll_g2[index].ownship ? Theme.border-color : self.background.brighter(1.25);
                             border-width: Theme.border-width;
-                            y:light_controll_g2[index].ownship? parent.y + 3px : parent.height - 26px - 3px;
+                            y: GlobalLightControllGroups.light_controll_g2[index].ownship? parent.y + 3px : parent.height - 26px - 3px;
                             animate y { duration: 250ms; easing: ease-in-out; }
-                            // animate background { duration: 250ms; }
                             animate border-color { duration: 250ms; }
                         }
                     }
@@ -74,15 +66,25 @@ export component LightControll inherits Rectangle{
                         border-radius: Theme.border-radius;
                         border-width: Theme.border-width;
                         background: Theme.background-color.brighter(0.25);
-                        border-color: light_controll_g2[index].is-on ? Theme.border-color : self.background.brighter(0.25);
+                        border-color:  GlobalLightControllGroups.light_controll_g2[index].is-on ? Theme.border-color : self.background.brighter(0.25);
                         animate background { duration: 250ms; }
                         animate border-color { duration: 250ms; }
                         TouchArea {
                             clicked => {
-                                light_controll_g2[index].is-on=!light_controll_g2[index].is-on;
-                                light_controll_g2[index].ownship = light_controll_g2[index].is-on? true : light_controll_g2[index].ownship;
-                                g2_ownership(light_controll_g2[index].name, light_controll_g2[index].ownship);
-                                g2_status(light_controll_g2[index].name,light_controll_g2[index].is-on);
+                                 GlobalLightControllGroups.light_controll_g2[index].is-on=!
+                                 GlobalLightControllGroups.light_controll_g2[index].is-on;
+
+                                 GlobalLightControllGroups.light_controll_g2[index].ownship =
+                                 GlobalLightControllGroups.light_controll_g2[index].is-on
+                                 ? true :
+                                 GlobalLightControllGroups.light_controll_g2[index].ownship;
+
+                                 GlobalLightControllGroups.g2_ownership(
+                                 GlobalLightControllGroups.light_controll_g2[index].name,
+                                 GlobalLightControllGroups.light_controll_g2[index].ownship);
+                                 GlobalLightControllGroups.g2_status(
+                                 GlobalLightControllGroups.light_controll_g2[index].name,
+                                 GlobalLightControllGroups.light_controll_g2[index].is-on);
                             }
                         }
                         Text {
