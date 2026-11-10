@@ -158,7 +158,7 @@ impl Handler {
             match stream.read(&mut *buffer) {
                 Ok(0) => {
                     warn!("Клиент {:?} закрыл соединение.", client_addr);
-                    break;
+                    return Ok(());
                 }
                 Ok(bytes_read) => {
                     let mut data_slice = &buffer[..bytes_read];
