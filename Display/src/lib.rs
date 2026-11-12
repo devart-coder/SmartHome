@@ -1,4 +1,5 @@
 pub mod display;
+pub mod macros;
 pub mod mqtt_manager;
 pub mod security;
 pub mod wifi;
@@ -24,23 +25,7 @@ use crate::yandex_weather::YandexWeatherFact;
 use ui::GlobalBMP180;
 use ui::GlobalMainTab;
 use ui::MainWindow;
-#[macro_export]
-macro_rules! to_lcd {
-    ($msg:expr,$display:ident,$ui:ident) => {
-        info!("{}", $msg);
-        let mut local_str = $ui.get_boot_logs();
-        local_str.push_str($msg);
-        $ui.set_boot_logs(local_str);
-        $display.update();
-    };
-}
-#[macro_export]
-macro_rules! to_lcdln {
-    ($msg:expr,$display:ident,$ui:ident) => {
-        let e = $msg.to_string() + "\n";
-        to_lcd!(e.as_str(), $display, $ui)
-    };
-}
+
 pub fn timer_block(ui: Weak<MainWindow>) -> Timer {
     let timer_fn = move || {
         let time = Local::now();

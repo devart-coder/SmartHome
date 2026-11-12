@@ -9,6 +9,7 @@ use log::{error, info};
 use master_display::display::Display;
 use master_display::mqtt_manager::MqttClientManager;
 use master_display::security::{BROKER_URL, PASSWORD, SDDI};
+use master_display::sntp;
 use master_display::ui::{GlobalConnectionsStatus, MainWindow};
 use master_display::wifi::Wifi;
 use master_display::{bmp_block, timer_block, to_lcd, to_lcdln, wifi_step};
@@ -74,35 +75,9 @@ fn main() {
                     main_window
                         .global::<GlobalConnectionsStatus>()
                         .set_wifi_status("online".into());
-                    //-------------------------------------------------//
                     //--------------------_LocalData_------------------//
                     to_lcdln!("Инициализация времени...", display, main_window);
-                    let mut counter = 1;
-                    let sntp = EspSntp::new_default().unwrap();
-                    while sntp.get_sync_status() != SyncStatus::Completed {
-                        FreeRtos::delay_ms(1000);
-                        if counter <= 10 {
-                            counter += 1;
-                        } else {
-                            break;
-                        }
-                    }
-                    if counter <= 10 {
-                        unsafe {
-                            std::env::set_var("TZ", "MSK-3");
-                            esp_idf_sys::tzset();
-                        }
-                    }
-                    match sntp.get_sync_status() {
-                        SyncStatus::Completed => {
-                            to_lcd!("Время успешно синхронизировано", display, main_window);
-                        }
-                        _ => {
-                            to_lcd!("Ошибка синхронизации времени", display, main_window);
-                        }
-                    };
-                } else {
-                    to_lcdln!("✅ (No IP)", display, main_window);
+                    sntp!("MSK-3", 10, display, main_window);
                 }
             };
         }
