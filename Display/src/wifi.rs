@@ -1,9 +1,27 @@
+use crate::to_lcd;
+use crate::to_lcdln;
 use esp_idf_hal::modem::Modem;
 use esp_idf_svc::{
     eventloop::EspSystemEventLoop,
     nvs::EspDefaultNvsPartition,
     wifi::{AuthMethod, BlockingWifi, ClientConfiguration, EspWifi},
 };
+#[macro_export]
+macro_rules! wifi_step {
+    ($title:expr, $action:expr, $display:ident, $win:ident) => {{
+        to_lcd!($title, $display, $win);
+        match $action {
+            Ok(val) => {
+                to_lcdln!("✅", $display, $win);
+                Ok(val)
+            }
+            Err(err) => {
+                to_lcdln!(format!("Error {err}").as_str(), $display, $win);
+                Err(err)
+            }
+        }
+    }};
+}
 
 #[derive(Debug, Default)]
 pub struct WifiConfigBuilder<'a> {

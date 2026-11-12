@@ -1,9 +1,13 @@
 pub mod display;
+pub mod macros;
 pub mod mqtt_manager;
 pub mod security;
 pub mod wifi;
 pub mod yandex_weather;
 
+use esp_idf_svc::mqtt::client::QoS;
+// use mqttrs::QoS;
+use crate::security::LightSubscriptions;
 use crate::ui::GlobalWeather;
 use crate::yandex_weather::YandexWeatherForeCasts;
 use bmp180_driver::BMP180;
@@ -12,7 +16,7 @@ use esp_idf_hal::delay::FreeRtos;
 use esp_idf_hal::i2c::I2cDriver;
 use esp_idf_svc::http::client::{Configuration, EspHttpConnection};
 use log::error;
-use slint::{ComponentHandle, Global, Timer};
+use slint::{ComponentHandle, Timer};
 use slint::{ToSharedString, Weak};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -22,26 +26,9 @@ pub mod ui {
 }
 use crate::yandex_weather::YandexWeatherFact;
 use ui::GlobalBMP180;
-use ui::GlobalConnectionsStatus;
 use ui::GlobalMainTab;
 use ui::MainWindow;
-#[macro_export]
-macro_rules! to_lcd {
-    ($msg:expr,$display:ident,$ui:ident) => {
-        info!("{}", $msg);
-        let mut local_str = $ui.get_boot_logs();
-        local_str.push_str($msg);
-        $ui.set_boot_logs(local_str);
-        $display.update();
-    };
-}
-#[macro_export]
-macro_rules! to_lcdln {
-    ($msg:expr,$display:ident,$ui:ident) => {
-        let e = $msg.to_string() + "\n";
-        to_lcd!(e.as_str(), $display, $ui)
-    };
-}
+
 pub fn timer_block(ui: Weak<MainWindow>) -> Timer {
     let timer_fn = move || {
         let time = Local::now();

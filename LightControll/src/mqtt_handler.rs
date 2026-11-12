@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    io::{Read, Write},
+    io::{ErrorKind, Read, Write},
     net::TcpStream,
     sync::{Arc, Mutex},
     time::Duration,
@@ -151,7 +151,7 @@ impl Handler {
         let client_addr = stream.peer_addr()?;
         info!("Подключился новый клиент: {:?}", client_addr);
         let mut buffer = Box::new([0xffu8; 1024]);
-        stream.set_read_timeout(Some(Duration::from_secs(30)))?;
+        stream.set_read_timeout(Some(Duration::from_secs(60)))?;
         stream.set_write_timeout(Some(Duration::from_secs(10)))?;
         loop {
             buffer.fill(0x00);
@@ -261,8 +261,11 @@ impl Handler {
                         Ok(Some(other)) => {
                             info!("Получен пакет типа: {:?}", other);
                         }
+                        Ok(Some(Packet::Disconnect)) => {
+                            info!("Клиент {:?} отправил DISCONNECT", client_addr);
+                            break;
+                        }
                         Ok(None) => {
-                            // Пакет пришел не полностью, ждем оставшиеся байты в следующем цикле read
                             continue;
                         }
                         Err(e) => {
@@ -271,7 +274,16 @@ impl Handler {
                         }
                     }
                 }
-                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => continue,
+                Err(ref e)
+                    if e.kind() == ErrorKind::TimedOut
+                        || e.kind() == std::io::ErrorKind::WouldBlock =>
+                {
+                    warn!(
+                        "Таймаут ожидания данных от {:?}, закрываем сокет.",
+                        client_addr
+                    );
+                    break;
+                }
                 Err(e) => {
                     log::error!("Ошибка сокета клиента {:?}: {:?}", client_addr, e);
                     break;
@@ -282,6 +294,8 @@ impl Handler {
             "Поток обработки клиента {:?} завершен. Сокет закрывается.",
             client_addr
         );
+        let _ = stream.shutdown(std::net::Shutdown::Both);
+        drop(stream);
         Ok(())
     }
 }
