@@ -2,14 +2,14 @@ use esp_idf_hal::delay::FreeRtos;
 use esp_idf_hal::i2c::{I2cConfig, I2cDriver};
 use esp_idf_hal::peripherals::Peripherals;
 use esp_idf_svc::log::EspLogger;
-use esp_idf_svc::mqtt::client::{EspMqttClient, EventPayload, MqttClientConfiguration, QoS};
+use esp_idf_svc::mqtt::client::MqttClientConfiguration;
 use esp_idf_svc::sntp::{EspSntp, SyncStatus};
 use esp_idf_svc::wifi::AuthMethod;
-use log::{error, info, warn};
+use log::{error, info};
 use master_display::display::Display;
 use master_display::mqtt_manager::MqttClientManager;
-use master_display::security::{BROKER_URL, LightSubscriptions, PASSWORD, SDDI};
-use master_display::ui::{GlobalConnectionsStatus, GlobalLightControllGroups, MainWindow};
+use master_display::security::{BROKER_URL, PASSWORD, SDDI};
+use master_display::ui::{GlobalConnectionsStatus, MainWindow};
 use master_display::wifi::Wifi;
 use master_display::{bmp_block, timer_block, to_lcd, to_lcdln};
 use slint::ComponentHandle;
@@ -132,37 +132,25 @@ fn main() {
     let _ui_timer_bmp = bmp_block(main_window.as_weak(), i2c_driver.clone());
     display.update();
     //-------------------------------------------------//
-    let ui = main_window.as_weak();
+    let _ui = main_window.as_weak();
     let (tx, rx) = channel::<&str>();
     if let Err(e) = tx.send("connecting") {
         error!("[SendError]: {}", e);
     }
     let mrx = Arc::new(Mutex::new(rx));
     let _mrx_clone = mrx.clone();
-    // let client = MqttClientManager::new(
-    //     BROKER_URL,
-    //     &MqttClientConfiguration {
-    //         client_id: Some("Display_7'"),
-    //         keep_alive_interval: Some(Duration::from_secs(60)),
-    //         disable_clean_session: false,
-    //         username: None,
-    //         password: None,
-    //         ..Default::default()
-    //     },
-    // );
-    let client = MqttClientManager::new(
+    let mut client = Arc::new(Mutex::new(MqttClientManager::new(
         BROKER_URL,
-        &MqttClientConfiguration {
-            client_id: Some("Display_7'"),
-            keep_alive_interval: Some(Duration::from_secs(60)),
+        MqttClientConfiguration {
+            client_id: Some("Display_7"),
+            keep_alive_interval: Some(Duration::from_secs(10)),
             disable_clean_session: false,
             username: None,
             password: None,
             ..Default::default()
         },
-    );
-    client.execute();
-
+    )));
+    client.lock().unwrap().run();
     // let c = client_guard.clone();
     // main_window
     //     .global::<GlobalLightControllGroups>()
@@ -348,19 +336,28 @@ fn main() {
     //         }
     //     });
     let ui = main_window.as_weak();
-    // let client_guard = client_guard.clone();
-    // main_window
-    //     .global::<GlobalConnectionsStatus>()
-    //     .on_mqtt_button_pressed(move || {
-    //         let current_mqtt_status = ui
-    //             .unwrap()
-    //             .global::<GlobalConnectionsStatus>()
-    //             .get_mqtt_status();
-    //         if current_mqtt_status == "disconnected" {
-    //             // connection.
-    //         } else if current_mqtt_status == "connected" {
-    //         }
-    //     });
+
+    let client = client.clone();
+    main_window
+        .global::<GlobalConnectionsStatus>()
+        .on_mqtt_button_pressed(move || {
+            let current_mqtt_status = ui
+                .unwrap()
+                .global::<GlobalConnectionsStatus>()
+                .get_mqtt_status();
+            if current_mqtt_status == "disconnected" {
+                ui.unwrap()
+                    .global::<GlobalConnectionsStatus>()
+                    .set_mqtt_status("connected".into());
+                client.lock().unwrap().restart();
+                info!("touch connected");
+            } else if current_mqtt_status == "connected" {
+                ui.unwrap()
+                    .global::<GlobalConnectionsStatus>()
+                    .set_mqtt_status("disconnected".into());
+                info!("touch disconnected");
+            }
+        });
     //---------------------------------------------------------//
     loop {
         display.handle_touch_pad();

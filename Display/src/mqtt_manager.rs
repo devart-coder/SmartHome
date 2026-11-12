@@ -13,14 +13,18 @@ use crate::security::LightSubscriptions;
 pub struct MqttClientManager {
     client: Arc<Mutex<Option<EspMqttClient<'static>>>>,
     connection: Arc<Mutex<Option<EspMqttConnection>>>,
+    url: &'static str,
+    config: MqttClientConfiguration<'static>,
 }
 impl MqttClientManager {
-    pub fn new(url: &'static str, config: &MqttClientConfiguration<'static>) -> Self {
+    pub fn new(url: &'static str, config: MqttClientConfiguration<'static>) -> Self {
         let s = Self {
             client: Arc::new(Mutex::new(None)),
             connection: Arc::new(Mutex::new(None)),
+            url,
+            config,
         };
-        match EspMqttClient::new(url, config) {
+        match EspMqttClient::new(url, &s.config) {
             Ok((cli, con)) => {
                 *s.connection.lock().unwrap() = Some(con);
                 *s.client.lock().unwrap() = Some(cli);
@@ -32,12 +36,27 @@ impl MqttClientManager {
         };
         s
     }
-
-    pub fn restart() {}
-    pub fn execute(&self) {
+    pub fn guard_client(&self) -> Arc<Mutex<Option<EspMqttClient<'static>>>> {
+        self.client.clone()
+    }
+    pub fn restart(&mut self) {
+        match EspMqttClient::new(self.url, &self.config) {
+            Ok((cli, con)) => {
+                *self.connection.lock().unwrap() = Some(con);
+                *self.client.lock().unwrap() = Some(cli);
+            }
+            Err(_) => {
+                *self.connection.lock().unwrap() = None;
+                *self.client.lock().unwrap() = None;
+            }
+        };
+        self.run();
+        info!("Перезагрузка клиента...");
+    }
+    pub fn run(&self) {
         let con_guard = self.connection.clone();
         let cli_guard = self.client.clone();
-        thread::spawn(move || {
+        let connection_handle = move || {
             let mut counter = 0;
             let mut con = match con_guard.lock().unwrap().take() {
                 Some(c) => c,
@@ -52,7 +71,7 @@ impl MqttClientManager {
                         let cli_guard = cli_guard.clone();
                         info!("Успешно подключились к MQTT-брокеру!");
                         counter = 0;
-                        thread::spawn(move || {
+                        let subscribe = move || {
                             let topics = vec![
                                 LightSubscriptions::ControllRoom.topic(),
                                 LightSubscriptions::ControllRoom.topic_with_ownership(),
@@ -80,12 +99,13 @@ impl MqttClientManager {
                                     None => {}
                                 };
                             }
-                        });
+                        };
+                        thread::spawn(subscribe);
                     }
                     EventPayload::Disconnected => {
                         counter += 1;
-                        warn!("Потеряно соединение с MQTT-брокером. Переподключение...");
-                        info!("Попытка {counter}...");
+                        warn!("Потеряно соединение с MQTT-брокером");
+                        info!("Попытка переподключения {counter}...");
                         if counter >= 5 {
                             log::error!("Сбой соединения");
                             *cli_guard.lock().unwrap() = None;
@@ -98,37 +118,7 @@ impl MqttClientManager {
                     _ => {}
                 }
             }
-        });
+        };
+        thread::spawn(connection_handle);
     }
-    // pub fn handler(&self) {}
-    // let client_guard = Arc::new(Mutex::new(client));
-    // let c = client_guard.clone();
-    // let mrx_clone = mrx.clone();
-    // let subscribe = ;
-    // thread::spawn(move || {
-    //     let topics = vec![
-    //         LightSubscriptions::ControllRoom.topic(),
-    //         LightSubscriptions::ControllRoom.topic_with_ownership(),
-    //         LightSubscriptions::Restroom.topic(),
-    //         LightSubscriptions::Restroom.topic_with_ownership(),
-    //         LightSubscriptions::Bathroom.topic(),
-    //         LightSubscriptions::Bathroom.topic_with_ownership(),
-    //         LightSubscriptions::Breakroom.topic(),
-    //         LightSubscriptions::Breakroom.topic_with_ownership(),
-    //     ];
-    //     for topic in topics {
-    //         let mut client = self.client.lock().unwrap().unwrap();
-    //         let result = client.subscribe(topic.as_str(), QoS::AtLeastOnce);
-    //         match result {
-    //             Err(e) => {
-    //                 log::error!("Не удалось подписаться на топик {topic}: {:?}", e)
-    //             }
-    //             Ok(_) => info!("Успешная подписка на топик: {topic}"),
-    //         }
-    //     }
-    // });
-    // }
-    // pub fn disconnect(&self) {
-    // *self.lock().unwrap() = None;
-    // }
 }
