@@ -49,8 +49,8 @@ export global GlobalMainTab{
     in-out property <string> time: "____, --:-- --.--.--";
 }
 export global GlobalConnectionsStatus{
-    in-out property <string> wifi_status : "offline";
-    in-out property <string> mqtt_status : "offline";
+    in-out property <string> wifi_status : "disconnected";
+    in-out property <string> mqtt_status : "disconnected";
     callback mqtt_button_pressed();
 }
 export global GlobalWeather{

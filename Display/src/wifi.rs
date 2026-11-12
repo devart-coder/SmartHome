@@ -1,4 +1,5 @@
 use crate::to_lcd;
+use crate::to_lcdln;
 use esp_idf_hal::modem::Modem;
 use esp_idf_svc::{
     eventloop::EspSystemEventLoop,
