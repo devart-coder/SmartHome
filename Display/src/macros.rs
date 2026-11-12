@@ -22,6 +22,10 @@ macro_rules! to_lcdln {
 #[macro_export]
 macro_rules! sntp {
     ($tz:expr, $timeout_sec:expr, $display:ident, $main_window:ident) => {{
+        unsafe {
+                                std::env::set_var("TZ", "MSK-3");
+                                esp_idf_sys::tzset();
+                            }
         if let Ok(sntp) = esp_idf_svc::sntp::EspSntp::new_default() {
             let mut counter = 0;
             while sntp.get_sync_status() != esp_idf_svc::sntp::SyncStatus::Completed {
@@ -34,21 +38,15 @@ macro_rules! sntp {
 
             match sntp.get_sync_status() {
                 esp_idf_svc::sntp::SyncStatus::Completed => {
-                    unsafe {
-                        std::env::set_var("TZ", $tz);
-                        esp_idf_sys::tzset();
-                    }
+
                     to_lcd!("Время успешно синхронизировано", $display, $main_window);
-                    true
                 }
                 _ => {
                     to_lcd!("Ошибка синхронизации времени", $display, $main_window);
-                    false
                 }
             }
         } else {
             to_lcd!("Ошибка инициализации SNTP", $display, $main_window);
-            false
         }
     }};
 }
