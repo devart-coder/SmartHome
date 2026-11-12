@@ -12,7 +12,7 @@ use esp_idf_hal::delay::FreeRtos;
 use esp_idf_hal::i2c::I2cDriver;
 use esp_idf_svc::http::client::{Configuration, EspHttpConnection};
 use log::error;
-use slint::{ComponentHandle, Global, Timer};
+use slint::{ComponentHandle, Timer};
 use slint::{ToSharedString, Weak};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -22,7 +22,6 @@ pub mod ui {
 }
 use crate::yandex_weather::YandexWeatherFact;
 use ui::GlobalBMP180;
-use ui::GlobalConnectionsStatus;
 use ui::GlobalMainTab;
 use ui::MainWindow;
 #[macro_export]
