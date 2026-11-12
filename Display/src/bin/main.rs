@@ -11,7 +11,7 @@ use master_display::mqtt_manager::MqttClientManager;
 use master_display::security::{BROKER_URL, PASSWORD, SDDI};
 use master_display::ui::{GlobalConnectionsStatus, MainWindow};
 use master_display::wifi::Wifi;
-use master_display::{bmp_block, timer_block, to_lcd, to_lcdln};
+use master_display::{bmp_block, timer_block, to_lcd, to_lcdln, wifi_step};
 use slint::ComponentHandle;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -50,81 +50,62 @@ fn main() {
             .set_auth_method(AuthMethod::WPA2Personal)
     });
     wifi.show_connection(|w| {
-        to_lcd!("Подключение к Wi-Fi... ", display, main_window);
-        match w.start() {
-            Ok(_) => {
-                to_lcdln!("✅", display, main_window);
-            }
-            Err(err) => {
-                to_lcdln!(format!("Error {}", err).as_str(), display, main_window);
-            }
-        };
-        to_lcd!("Поиск сети... ", display, main_window);
-        match w.connect() {
-            Ok(_) => {
-                to_lcdln!("✅", display, main_window);
-                to_lcd!("Получение IP-адреса (DHCP)...", display, main_window);
-                match w.wait_netif_up() {
-                    Ok(_) => {
-                        if let Ok(ip_info) = w.wifi().sta_netif().get_ip_info() {
-                            to_lcdln!(
-                                format!("✅\nIp: {:?}", ip_info.ip).as_str(),
-                                display,
-                                main_window
-                            );
-                            main_window
-                                .global::<GlobalConnectionsStatus>()
-                                .set_wifi_status("online".into());
-                            //-------------------------------------------------//
-                            //--------------------_LocalData_------------------//
-                            to_lcdln!("Инициализация времени...", display, main_window);
-                            let thread = thread::spawn(move || {
-                                let mut counter = 1;
-                                let sntp = EspSntp::new_default().unwrap();
-                                while sntp.get_sync_status() != SyncStatus::Completed {
-                                    FreeRtos::delay_ms(1000);
-                                    if counter <= 10 {
-                                        counter += 1;
-                                    } else {
-                                        break;
-                                    }
-                                }
-                                if counter <= 10 {
-                                    unsafe {
-                                        std::env::set_var("TZ", "MSK-3");
-                                        esp_idf_sys::tzset();
-                                    }
-                                    return SyncStatus::Completed;
-                                }
-                                sntp.get_sync_status()
-                            });
-                            let r = thread.join().unwrap();
-                            match r {
-                                SyncStatus::Completed => {
-                                    to_lcd!("Время успешно синхронизировано", display, main_window);
-                                }
-                                _ => {
-                                    to_lcd!("Ошибка синхронизации времени", display, main_window);
-                                }
-                            };
+        let _ = wifi_step!("Подключение к Wi-Fi... ", w.start(), display, main_window);
+        if wifi_step!("Поиск сети...", w.connect(), display, main_window).is_ok() {
+            if wifi_step!(
+                "Получение IP-адреса (DHCP)...",
+                w.wait_netif_up(),
+                display,
+                main_window
+            )
+            .is_ok()
+            {
+                if let Ok(ip_info) = w.wifi().sta_netif().get_ip_info() {
+                    to_lcdln!(
+                        format!("Ip: {:?}", ip_info.ip).as_str(),
+                        display,
+                        main_window
+                    );
+                    unsafe {
+                        esp_idf_sys::esp_wifi_set_ps(esp_idf_sys::wifi_ps_type_t_WIFI_PS_NONE);
+                        info!("Режим энергосбережения Wi-Fi успешно ОТКЛЮЧЕН.");
+                    }
+                    to_lcdln!("Wi-Fi успешно подключен!", display, main_window);
+                    main_window
+                        .global::<GlobalConnectionsStatus>()
+                        .set_wifi_status("online".into());
+                    //-------------------------------------------------//
+                    //--------------------_LocalData_------------------//
+                    to_lcdln!("Инициализация времени...", display, main_window);
+                    let mut counter = 1;
+                    let sntp = EspSntp::new_default().unwrap();
+                    while sntp.get_sync_status() != SyncStatus::Completed {
+                        FreeRtos::delay_ms(1000);
+                        if counter <= 10 {
+                            counter += 1;
                         } else {
-                            to_lcdln!("✅ (No IP)", display, main_window);
+                            break;
                         }
                     }
-                    Err(err) => {
-                        to_lcdln!(format!("Error {}", err).as_str(), display, main_window);
+                    if counter <= 10 {
+                        unsafe {
+                            std::env::set_var("TZ", "MSK-3");
+                            esp_idf_sys::tzset();
+                        }
                     }
-                };
-            }
-            Err(err) => {
-                to_lcdln!(format!("Error {}", err).as_str(), display, main_window);
-            }
-        };
-        unsafe {
-            esp_idf_sys::esp_wifi_set_ps(esp_idf_sys::wifi_ps_type_t_WIFI_PS_NONE);
-            println!("Режим энергосбережения Wi-Fi успешно ОТКЛЮЧЕН.");
+                    match sntp.get_sync_status() {
+                        SyncStatus::Completed => {
+                            to_lcd!("Время успешно синхронизировано", display, main_window);
+                        }
+                        _ => {
+                            to_lcd!("Ошибка синхронизации времени", display, main_window);
+                        }
+                    };
+                } else {
+                    to_lcdln!("✅ (No IP)", display, main_window);
+                }
+            };
         }
-        to_lcdln!("Wi-Fi успешно подключен!", display, main_window);
     });
     main_window.set_is_loading(false);
     //-------------------------------------------------//
