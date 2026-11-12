@@ -1,3 +1,7 @@
+use crate::security::LightSubscriptions;
+use crate::ui::GlobalLightControllGroups;
+use esp_idf_svc::mqtt::client::QoS;
+use mqttrs::QoS as OtherQoS;
 #[macro_export]
 macro_rules! to_lcd {
     ($msg:expr,$display:ident,$ui:ident) => {
@@ -47,4 +51,85 @@ macro_rules! sntp {
             false
         }
     }};
+}
+
+#[macro_export]
+macro_rules! switchers_group_2 {
+    ($client_guard:ident, $ui:ident) => {
+        let manager_guard = $client_guard.clone();
+        let ui = $ui.as_weak();
+        ui.unwrap()
+            .global::<GlobalLightControllGroups>()
+            .on_g2_status(move |name, status| {
+                #[cfg(Debug)]
+                {
+                    info!("Name : {} Status:{}", name, status);
+                }
+                let manager_guard = manager_guard.lock().unwrap();
+                let client_arc = manager_guard.guard_client();
+                let mut inner_guard = client_arc.lock().unwrap();
+                let c_lock = inner_guard.as_mut().unwrap();
+                let topic_name = if name == LightSubscriptions::ControllRoom.name() {
+                    Some(LightSubscriptions::ControllRoom.topic())
+                } else if name == LightSubscriptions::Restroom.name() {
+                    Some(LightSubscriptions::Restroom.topic())
+                } else if name == LightSubscriptions::Bathroom.name() {
+                    Some(LightSubscriptions::Bathroom.topic())
+                } else if name == LightSubscriptions::Breakroom.name() {
+                    Some(LightSubscriptions::Breakroom.topic())
+                } else {
+                    None
+                };
+                if let Some(topic) = topic_name {
+                    c_lock
+                        .publish(
+                            topic.as_str(),
+                            QoS::AtLeastOnce,
+                            true,
+                            if status { b"on" } else { b"off" },
+                        )
+                        .unwrap();
+                };
+            });
+    };
+}
+#[macro_export]
+macro_rules! owners_group_2 {
+    ($client_guard:ident, $ui:ident) => {
+        let manager_guard = $client_guard.clone();
+        let ui = $ui.as_weak();
+        ui.unwrap()
+            .global::<GlobalLightControllGroups>()
+            .on_g2_ownership(move |name, status| {
+                #[cfg(Debug)]
+                {
+                    info!("Name : {} Status:{}", name, status);
+                }
+                let manager_guard = manager_guard.lock().unwrap();
+                let client_arc = manager_guard.guard_client();
+                let mut inner_guard = client_arc.lock().unwrap();
+                let c_lock = inner_guard.as_mut().unwrap();
+                let topic_name = if name == LightSubscriptions::ControllRoom.name() {
+                    Some(LightSubscriptions::ControllRoom.topic_with_ownership())
+                } else if name == LightSubscriptions::Restroom.name() {
+                    Some(LightSubscriptions::Restroom.topic_with_ownership())
+                } else if name == LightSubscriptions::Bathroom.name() {
+                    Some(LightSubscriptions::Bathroom.topic_with_ownership())
+                } else if name == LightSubscriptions::Breakroom.name() {
+                    Some(LightSubscriptions::Breakroom.topic_with_ownership())
+                } else {
+                    None
+                };
+                if let Some(topic) = topic_name {
+                    c_lock
+                        .publish(
+                            topic.as_str(),
+                            QoS::AtLeastOnce,
+                            true,
+                            if status { b"on" } else { b"off" },
+                        )
+                        .unwrap();
+                };
+            });
+    };
 }

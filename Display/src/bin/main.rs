@@ -3,16 +3,20 @@ use esp_idf_hal::i2c::{I2cConfig, I2cDriver};
 use esp_idf_hal::peripherals::Peripherals;
 use esp_idf_svc::log::EspLogger;
 use esp_idf_svc::mqtt::client::MqttClientConfiguration;
+use esp_idf_svc::mqtt::client::QoS;
 use esp_idf_svc::sntp::{EspSntp, SyncStatus};
 use esp_idf_svc::wifi::AuthMethod;
 use log::{error, info};
 use master_display::display::Display;
 use master_display::mqtt_manager::MqttClientManager;
+use master_display::security::LightSubscriptions;
 use master_display::security::{BROKER_URL, PASSWORD, SDDI};
-use master_display::sntp;
+use master_display::switchers_group_2;
+use master_display::ui::GlobalLightControllGroups;
 use master_display::ui::{GlobalConnectionsStatus, MainWindow};
 use master_display::wifi::Wifi;
 use master_display::{bmp_block, timer_block, to_lcd, to_lcdln, wifi_step};
+use master_display::{owners_group_2, sntp};
 use slint::ComponentHandle;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -39,11 +43,11 @@ fn main() {
     let mut display = Display::default(i2c_driver.clone());
     //------------------------------------------------------------------------//
     //SlintMainWindow
-    let main_window = MainWindow::new().unwrap();
-    main_window.set_is_loading(true);
+    let ui = MainWindow::new().unwrap();
+    ui.set_is_loading(true);
     //-------------------------------------------------//
     //---------------------_WIFI_----------------------//
-    to_lcdln!("Инициализация Wi-Fi...", display, main_window);
+    to_lcdln!("Инициализация Wi-Fi...", display, ui);
     let mut wifi = Wifi::new(p.modem);
     wifi.init_config(|b| {
         b.set_ssid(SDDI)
@@ -51,50 +55,38 @@ fn main() {
             .set_auth_method(AuthMethod::WPA2Personal)
     });
     wifi.show_connection(|w| {
-        let _ = wifi_step!("Подключение к Wi-Fi... ", w.start(), display, main_window);
-        if wifi_step!("Поиск сети...", w.connect(), display, main_window).is_ok() {
+        let _ = wifi_step!("Подключение к Wi-Fi... ", w.start(), display, ui);
+        if wifi_step!("Поиск сети...", w.connect(), display, ui).is_ok() {
             if wifi_step!(
                 "Получение IP-адреса (DHCP)...",
                 w.wait_netif_up(),
                 display,
-                main_window
+                ui
             )
             .is_ok()
             {
                 if let Ok(ip_info) = w.wifi().sta_netif().get_ip_info() {
-                    to_lcdln!(
-                        format!("Ip: {:?}", ip_info.ip).as_str(),
-                        display,
-                        main_window
-                    );
+                    to_lcdln!(format!("Ip: {:?}", ip_info.ip).as_str(), display, ui);
                     unsafe {
                         esp_idf_sys::esp_wifi_set_ps(esp_idf_sys::wifi_ps_type_t_WIFI_PS_NONE);
                         info!("Режим энергосбережения Wi-Fi успешно ОТКЛЮЧЕН.");
                     }
-                    to_lcdln!("Wi-Fi успешно подключен!", display, main_window);
-                    main_window
-                        .global::<GlobalConnectionsStatus>()
+                    to_lcdln!("Wi-Fi успешно подключен!", display, ui);
+                    ui.global::<GlobalConnectionsStatus>()
                         .set_wifi_status("online".into());
                     //--------------------_LocalData_------------------//
-                    to_lcdln!("Инициализация времени...", display, main_window);
-                    sntp!("MSK-3", 10, display, main_window);
+                    to_lcdln!("Инициализация времени...", display, ui);
+                    sntp!("MSK-3", 10, display, ui);
                 }
             };
         }
     });
-    main_window.set_is_loading(false);
+    ui.set_is_loading(false);
     //-------------------------------------------------//
-    let _timer = timer_block(main_window.as_weak());
-    let _ui_timer_bmp = bmp_block(main_window.as_weak(), i2c_driver.clone());
+    let _timer = timer_block(ui.as_weak());
+    let _ui_timer_bmp = bmp_block(ui.as_weak(), i2c_driver.clone());
     display.update();
     //-------------------------------------------------//
-    let _ui = main_window.as_weak();
-    let (tx, rx) = channel::<&str>();
-    if let Err(e) = tx.send("connecting") {
-        error!("[SendError]: {}", e);
-    }
-    let mrx = Arc::new(Mutex::new(rx));
-    let _mrx_clone = mrx.clone();
     let mut client = Arc::new(Mutex::new(MqttClientManager::new(
         BROKER_URL,
         MqttClientConfiguration {
@@ -107,211 +99,26 @@ fn main() {
         },
     )));
     client.lock().unwrap().run();
-    // let c = client_guard.clone();
-    // main_window
-    //     .global::<GlobalLightControllGroups>()
-    //     .on_g2_status(move |name, status| {
-    //         info!("Name : {} Status:{}", name, status);
-    //         let mut c_lock = c.lock().unwrap();
-    //         if name == LightSubscriptions::ControllRoom.name() {
-    //             if status == true {
-    //                 c_lock
-    //                     .publish(
-    //                         LightSubscriptions::ControllRoom.topic().as_str(),
-    //                         QoS::AtLeastOnce,
-    //                         true,
-    //                         b"on",
-    //                     )
-    //                     .unwrap();
-    //             } else {
-    //                 c_lock
-    //                     .publish(
-    //                         LightSubscriptions::ControllRoom.topic().as_str(),
-    //                         QoS::AtLeastOnce,
-    //                         true,
-    //                         b"off",
-    //                     )
-    //                     .unwrap();
-    //             }
-    //         } else if name == LightSubscriptions::Restroom.name() {
-    //             if status == true {
-    //                 c_lock
-    //                     .publish(
-    //                         LightSubscriptions::Restroom.topic().as_str(),
-    //                         QoS::AtLeastOnce,
-    //                         true,
-    //                         b"on",
-    //                     )
-    //                     .unwrap();
-    //             } else {
-    //                 c_lock
-    //                     .publish(
-    //                         LightSubscriptions::Restroom.topic().as_str(),
-    //                         QoS::AtLeastOnce,
-    //                         true,
-    //                         b"off",
-    //                     )
-    //                     .unwrap();
-    //             }
-    //         } else if name == LightSubscriptions::Bathroom.name() {
-    //             if status == true {
-    //                 c_lock
-    //                     .publish(
-    //                         LightSubscriptions::Bathroom.topic().as_str(),
-    //                         QoS::AtLeastOnce,
-    //                         true,
-    //                         b"on",
-    //                     )
-    //                     .unwrap();
-    //             } else {
-    //                 c_lock
-    //                     .publish(
-    //                         LightSubscriptions::Bathroom.topic().as_str(),
-    //                         QoS::AtLeastOnce,
-    //                         true,
-    //                         b"off",
-    //                     )
-    //                     .unwrap();
-    //             }
-    //         } else if name == LightSubscriptions::Breakroom.name() {
-    //             if status == true {
-    //                 c_lock
-    //                     .publish(
-    //                         LightSubscriptions::Breakroom.topic().as_str(),
-    //                         QoS::AtLeastOnce,
-    //                         true,
-    //                         b"on",
-    //                     )
-    //                     .unwrap();
-    //             } else {
-    //                 c_lock
-    //                     .publish(
-    //                         LightSubscriptions::Breakroom.topic().as_str(),
-    //                         QoS::AtLeastOnce,
-    //                         true,
-    //                         b"off",
-    //                     )
-    //                     .unwrap();
-    //             }
-    //         }
-    //     });
-    // let c = client_guard.clone();
-    // main_window
-    //     .global::<GlobalLightControllGroups>()
-    //     .on_g2_ownership(move |name, status| {
-    //         info!("Name : {} Status:{}", name, status);
-    //         let mut c_lock = c.lock().unwrap();
-    //         if name == LightSubscriptions::ControllRoom.name() {
-    //             if status == true {
-    //                 c_lock
-    //                     .publish(
-    //                         LightSubscriptions::ControllRoom
-    //                             .topic_with_ownership()
-    //                             .as_str(),
-    //                         QoS::AtLeastOnce,
-    //                         true,
-    //                         b"on",
-    //                     )
-    //                     .unwrap();
-    //             } else {
-    //                 c_lock
-    //                     .publish(
-    //                         LightSubscriptions::ControllRoom
-    //                             .topic_with_ownership()
-    //                             .as_str(),
-    //                         QoS::AtLeastOnce,
-    //                         true,
-    //                         b"off",
-    //                     )
-    //                     .unwrap();
-    //             }
-    //         } else if name == LightSubscriptions::Restroom.name() {
-    //             if status == true {
-    //                 c_lock
-    //                     .publish(
-    //                         LightSubscriptions::Restroom.topic_with_ownership().as_str(),
-    //                         QoS::AtLeastOnce,
-    //                         true,
-    //                         b"on",
-    //                     )
-    //                     .unwrap();
-    //             } else {
-    //                 c_lock
-    //                     .publish(
-    //                         LightSubscriptions::Restroom.topic_with_ownership().as_str(),
-    //                         QoS::AtLeastOnce,
-    //                         true,
-    //                         b"off",
-    //                     )
-    //                     .unwrap();
-    //             }
-    //         } else if name == LightSubscriptions::Bathroom.name() {
-    //             if status == true {
-    //                 c_lock
-    //                     .publish(
-    //                         LightSubscriptions::Bathroom.topic_with_ownership().as_str(),
-    //                         QoS::AtLeastOnce,
-    //                         true,
-    //                         b"on",
-    //                     )
-    //                     .unwrap();
-    //             } else {
-    //                 c_lock
-    //                     .publish(
-    //                         LightSubscriptions::Bathroom.topic_with_ownership().as_str(),
-    //                         QoS::AtLeastOnce,
-    //                         true,
-    //                         b"off",
-    //                     )
-    //                     .unwrap();
-    //             }
-    //         } else if name == LightSubscriptions::Breakroom.name() {
-    //             if status == true {
-    //                 c_lock
-    //                     .publish(
-    //                         LightSubscriptions::Breakroom
-    //                             .topic_with_ownership()
-    //                             .as_str(),
-    //                         QoS::AtLeastOnce,
-    //                         true,
-    //                         b"on",
-    //                     )
-    //                     .unwrap();
-    //             } else {
-    //                 c_lock
-    //                     .publish(
-    //                         LightSubscriptions::Breakroom
-    //                             .topic_with_ownership()
-    //                             .as_str(),
-    //                         QoS::AtLeastOnce,
-    //                         true,
-    //                         b"off",
-    //                     )
-    //                     .unwrap();
-    //             }
-    //         }
-    //     });
-    let ui = main_window.as_weak();
+    switchers_group_2!(client, ui);
+    owners_group_2!(client, ui);
 
+    let uiw = ui.as_weak();
     let client = client.clone();
-    main_window
-        .global::<GlobalConnectionsStatus>()
+    ui.global::<GlobalConnectionsStatus>()
         .on_mqtt_button_pressed(move || {
-            let current_mqtt_status = ui
+            let current_mqtt_status = uiw
                 .unwrap()
                 .global::<GlobalConnectionsStatus>()
                 .get_mqtt_status();
             if current_mqtt_status == "disconnected" {
-                ui.unwrap()
+                uiw.unwrap()
                     .global::<GlobalConnectionsStatus>()
                     .set_mqtt_status("connected".into());
                 client.lock().unwrap().restart();
-                info!("touch connected");
             } else if current_mqtt_status == "connected" {
-                ui.unwrap()
+                uiw.unwrap()
                     .global::<GlobalConnectionsStatus>()
                     .set_mqtt_status("disconnected".into());
-                info!("touch disconnected");
             }
         });
     //---------------------------------------------------------//
