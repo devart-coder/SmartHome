@@ -52,6 +52,13 @@ macro_rules! sntp {
 }
 
 #[macro_export]
+macro_rules! ui_global_callback {
+    ($ui:expr, $global:ty, $method:ident, $handler:expr) => {
+        let ui = $ui.as_weak();
+        $ui.unwrap().global::<$global>().$method($handler);
+    };
+}
+#[macro_export]
 macro_rules! switchers_group_2 {
     ($client_guard:ident, $ui:ident) => {
         let manager_guard = $client_guard.clone();
@@ -59,7 +66,7 @@ macro_rules! switchers_group_2 {
         ui.unwrap()
             .global::<GlobalLightControllGroups>()
             .on_g2_status(move |name, status| {
-                #[cfg(Debug)]
+                #[cfg(debug_assertions)]
                 {
                     info!("Name : {} Status:{}", name, status);
                 }
@@ -91,6 +98,46 @@ macro_rules! switchers_group_2 {
             });
     };
 }
+// #[macro_export]
+// macro_rules! switchers_group_2 {
+//     ($client_guard:ident, $ui:ident) => {
+//         let manager_guard = $client_guard.clone();
+//         let ui = $ui.as_weak();
+//         ui.unwrap()
+//             .global::<GlobalLightControllGroups>()
+//             .on_g2_status(move |name, status| {
+//                 #[cfg(debug_assertions)]
+//                 {
+//                     info!("Name : {} Status:{}", name, status);
+//                 }
+//                 let manager_guard = manager_guard.lock().unwrap();
+//                 let client_arc = manager_guard.guard_client();
+//                 let mut inner_guard = client_arc.lock().unwrap();
+//                 let c_lock = inner_guard.as_mut().unwrap();
+//                 let topic_name = if name == LightSubscriptions::ControllRoom.name() {
+//                     Some(LightSubscriptions::ControllRoom.topic())
+//                 } else if name == LightSubscriptions::Restroom.name() {
+//                     Some(LightSubscriptions::Restroom.topic())
+//                 } else if name == LightSubscriptions::Bathroom.name() {
+//                     Some(LightSubscriptions::Bathroom.topic())
+//                 } else if name == LightSubscriptions::Breakroom.name() {
+//                     Some(LightSubscriptions::Breakroom.topic())
+//                 } else {
+//                     None
+//                 };
+//                 if let Some(topic) = topic_name {
+//                     c_lock
+//                         .publish(
+//                             topic.as_str(),
+//                             QoS::AtLeastOnce,
+//                             true,
+//                             if status { b"on" } else { b"off" },
+//                         )
+//                         .unwrap();
+//                 };
+//             });
+//     };
+// }
 #[macro_export]
 macro_rules! owners_group_2 {
     ($client_guard:ident, $ui:ident) => {
