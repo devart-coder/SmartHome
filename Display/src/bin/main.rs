@@ -8,15 +8,15 @@ use esp_idf_svc::sntp::{EspSntp, SyncStatus};
 use esp_idf_svc::wifi::AuthMethod;
 use log::{error, info};
 use master_display::display::Display;
-use master_display::mqtt_manager::MqttClientManager;
+use master_display::mqtt_manager::{MqttClientConnectionStatus, MqttClientManager};
 use master_display::security::LightSubscriptions;
 use master_display::security::{BROKER_URL, PASSWORD, SDDI};
-use master_display::switchers_group_2;
 use master_display::ui::GlobalLightControllGroups;
 use master_display::ui::{GlobalConnectionsStatus, MainWindow};
 use master_display::wifi::Wifi;
-use master_display::{bmp_block, timer_block, to_lcd, to_lcdln, wifi_step};
+use master_display::{bmp_block, timer_block, to_lcd, to_lcdln, wifi_step, yandex_weather_block};
 use master_display::{owners_group_2, sntp};
+use master_display::{switchers_group_2, ui_global_callback};
 use slint::ComponentHandle;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -83,9 +83,10 @@ fn main() {
     });
     ui.set_is_loading(false);
     //-------------------------------------------------//
+    display.update();
     let _timer = timer_block(ui.as_weak());
     let _ui_timer_bmp = bmp_block(ui.as_weak(), i2c_driver.clone());
-    display.update();
+    let _weather = yandex_weather_block(ui.as_weak());
     //-------------------------------------------------//
     let mut client = Arc::new(Mutex::new(MqttClientManager::new(
         BROKER_URL,
@@ -110,15 +111,15 @@ fn main() {
                 .unwrap()
                 .global::<GlobalConnectionsStatus>()
                 .get_mqtt_status();
-            if current_mqtt_status == "disconnected" {
+            if current_mqtt_status == MqttClientConnectionStatus::Disconnected.message() {
                 uiw.unwrap()
                     .global::<GlobalConnectionsStatus>()
-                    .set_mqtt_status("connected".into());
+                    .set_mqtt_status(MqttClientConnectionStatus::Connected.message().into());
                 client.lock().unwrap().restart();
-            } else if current_mqtt_status == "connected" {
+            } else if current_mqtt_status == MqttClientConnectionStatus::Connected.message() {
                 uiw.unwrap()
                     .global::<GlobalConnectionsStatus>()
-                    .set_mqtt_status("disconnected".into());
+                    .set_mqtt_status(MqttClientConnectionStatus::Disconnected.message().into());
             }
         });
     //---------------------------------------------------------//

@@ -102,46 +102,46 @@ pub fn yandex_weather_block(ui: Weak<MainWindow>) -> Timer {
                         Ok(result) => {
                             match YandexWeatherFact::parse(&result) {
                                 Ok(w) => {
-                                    let global_weather = ui.global::<GlobalWeather>();
-                                    global_weather.set_weather_status("online".into());
-                                    global_weather.set_weather(ui::WeatherFact {
-                                        status: w.condition.clone(),
-                                        cloudness: w.cloudness,
-                                        condition: YandexWeatherFact::translate_condition(
-                                            &w.condition,
-                                        ),
-                                        daytime: w.daytime,
-                                        feels_like: w.feels_like,
-                                        humidity: w.humidity,
-                                        icon: w.icon.into(),
-                                        is_thunder: w.is_thunder,
-                                        prec_prob: w.prec_prob,
-                                        prec_type: w.prec_type,
-                                        pressure_mm: w.pressure_mm,
-                                        pressure_pa: w.pressure_pa,
-                                        season: w.season.into(),
-                                        temp: w.temp,
-                                        wind_dir: YandexWeatherFact::translate_wind_dir(
-                                            &w.wind_dir,
-                                        ),
-                                        wind_gust: w.wind_gust.into(),
-                                        wind_speed: w.wind_speed.into(),
-                                    });
+                                    // let global_weather = ui.global::<GlobalWeather>();
+                                    // global_weather.set_weather_status("online".into());
+                                    // global_weather.set_weather(ui::WeatherFact {
+                                    //     status: w.condition.clone(),
+                                    //     cloudness: w.cloudness,
+                                    //     condition: YandexWeatherFact::translate_condition(
+                                    //         &w.condition,
+                                    //     ),
+                                    //     daytime: w.daytime,
+                                    //     feels_like: w.feels_like,
+                                    //     humidity: w.humidity,
+                                    //     icon: w.icon.into(),
+                                    //     is_thunder: w.is_thunder,
+                                    //     prec_prob: w.prec_prob,
+                                    //     prec_type: w.prec_type,
+                                    //     pressure_mm: w.pressure_mm,
+                                    //     pressure_pa: w.pressure_pa,
+                                    //     season: w.season.into(),
+                                    //     temp: w.temp,
+                                    //     wind_dir: YandexWeatherFact::translate_wind_dir(
+                                    //         &w.wind_dir,
+                                    //     ),
+                                    //     wind_gust: w.wind_gust.into(),
+                                    //     wind_speed: w.wind_speed.into(),
+                                    // });
                                 }
                                 Err(e) => {
                                     println!("Ошибка получения погоды: {}", e);
                                 }
                             }
-                            match YandexWeatherForeCasts::parse(&result) {
-                                Ok(v) => {
-                                    let (_today, _tomorrow) = v;
-                                    // println!("{:#?}", today);
-                                    // println!("{:#?}", tomorrow);
-                                }
-                                Err(e) => {
-                                    println!("Ошибка получения погоды: {}", e);
-                                }
-                            }
+                            // match YandexWeatherForeCasts::parse(&result) {
+                            //     Ok(v) => {
+                            //         let (_today, _tomorrow) = v;
+                            //         // println!("{:#?}", today);
+                            //         // println!("{:#?}", tomorrow);
+                            //     }
+                            //     Err(e) => {
+                            //         println!("Ошибка получения погоды: {}", e);
+                            //     }
+                            // }
                         }
                         Err(e) => println!("{}", e),
                     }

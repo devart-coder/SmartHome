@@ -10,6 +10,21 @@ use log::{info, warn};
 
 use crate::security::LightSubscriptions;
 
+pub enum MqttClientConnectionStatus {
+    Connected,
+    Disconnected,
+    Connecting,
+}
+impl MqttClientConnectionStatus {
+    pub fn message(&self) -> &'static str {
+        match self {
+            MqttClientConnectionStatus::Connected => "connected",
+            MqttClientConnectionStatus::Disconnected => "disconnected",
+            MqttClientConnectionStatus::Connecting => "connecting",
+        }
+    }
+}
+
 pub struct MqttClientManager {
     client: Arc<Mutex<Option<EspMqttClient<'static>>>>,
     connection: Arc<Mutex<Option<EspMqttConnection>>>,

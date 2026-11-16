@@ -1,19 +1,29 @@
+import { HorizontalBox, VerticalBox, ScrollView } from "std-widgets.slint";
+import {Theme} from "../global/themes.slint";
+// import { Weather, CastsHourse } from "../global/global_weather_tab.slint";
 export component WeatherTab inherits Rectangle{
-    background: black;
-    GridLayout {
-        spacing: 10px;
-        padding: 10px;
-        Row{
-            for index in [0,1,2,3,4,5] : Rectangle {
-                border-radius: 10px;
-                background: darkgray;
-            }
-        }
-        Row{
-            for index in [6,7,8,9,10,11] : Rectangle {
-                border-radius: 10px;
-                background: darkgray;
-            }
-        }
-    }
+    // // in property <[CastsHourse]> hourse:Weather.details.toda;
+    // VerticalBox {
+    //     padding: 16px;
+    //     spacing: 8px;
+    //     HorizontalBox {
+    //         Text { text: "Время"; color: Theme.text-color; width: 70px; font-weight: 700; }
+    //         Text { text: "Небо"; color: Theme.text-color; width: 60px; font-weight: 700; }
+    //         Text { text: "Темп."; color: Theme.text-color; width: 70px; font-weight: 700; }
+    //         Text { text: "Осадки"; color: Theme.text-color; width: 80px; font-weight: 700; }
+    //         Text { text: "Ветер"; color: Theme.text-color; font-weight: 700; }
+    //     }
+    //     Rectangle { height: 1px; background: #45475a; }
+    //     ScrollView {
+    //         VerticalBox {
+    //             for casts[i] in Weather.details.today.hourse: HorizontalBox{
+    //                 Text { text: casts.hour; color: Theme.text-color; width: 70px; font-weight: 700; }
+    //                 Text { text: casts.cloudness; color: Theme.text-color; width: 60px; font-weight: 700; }
+    //                 Text { text: casts.temp; color: Theme.text-color; width: 70px; font-weight: 700; }
+    //                 Text { text: casts.condition; color: Theme.text-color; width: 60px; font-weight: 700; }
+    //                 Text { text: casts.wind-speed; color: Theme.text-color; width: 60px; font-weight: 700; }
+    //             }
+    //         }
+    //     }
+    // }
 }

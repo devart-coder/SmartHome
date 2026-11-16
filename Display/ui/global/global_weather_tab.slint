@@ -1,0 +1,87 @@
+// export struct CastsParts {
+//     // Светлое или темное время суток.
+//     daytime: string,
+//     // Облачность
+//     cloudness: int,
+//     // Код расшифровки погодного описания
+//     condition: string,
+//     // Влажность воздуха (в процентах).
+//     humidity: int,
+//     // Признак того, что время суток, указанное в поле daytime, является полярным.
+//     polar: bool,
+//     // Прогнозируемый период осадков (в минутах).
+//     prec_period: int,
+//     // Сила осадков.
+//     prec_strength: int,
+//     // Тип осадков.
+//     prec_type: int,
+//     // Средняя температура для времени суток (°C).
+//     temp_avg: int,
+//     //Максимальная температура для времени суток (°C).
+//     temp_max: int,
+//     //Минимальная температура для времени суток (°C).
+//     temp_min: int,
+//     // Ощущаемая температура (°C).
+//     feels_like: int,
+//     uv_index: int,
+//     wind_angle: int,
+//     // Направление ветра.
+//     wind_dir: string,
+//     // Скорость порывов ветра (в м/с).
+//     wind_gust: int,
+//     // Скорость ветра (в м/с).
+//     wind_speed: int,
+// }
+// export struct CastsPartsData {
+//     //прогноз на день
+//     day: CastsParts,
+//     //12-часовой прогноз на день.
+//     day_short: CastsParts,
+//     //прогноз на вечер.
+//     evening: CastsParts,
+//     //прогноз на утро
+//     morning: CastsParts,
+//     //прогноз на ночь
+//     night: CastsParts,
+//     //прогноз на ночь, для которого исключены поля temp_min и temp_max,
+//     //в поле temp указывается минимальная температура за ночной период.
+//     night_short: CastsParts,
+// }
+// export struct CastsHourse {
+//     hour: string,
+//     cloudness: float,
+//     condition: string,
+//     feels_like: int,
+//     humidity: int,
+//     is_thunder: bool,
+//     prec_period: int,
+//     prec_strength: int,
+//     prec_type: int,
+//     temp: int,
+//     uv_index: int,
+//     wind_angle: int,
+//     wind_dir: string,
+//     wind_gust: int,
+//     wind_speed: float,
+// }
+// export struct ForeCastsData {
+//     //Время начала восхода Солнца,
+//     rise_begin: string,
+//     //Время окончания восхода Солнца
+//     sun_rise: string,
+//     //Время начала заката Солнца
+//     sun_set: string,
+//     //Время окончания заката Солнца
+//     set_end: string,
+//     //Прогнозы по времени суток и 12-часовые прогнозы.
+//     parts: CastsPartsData,
+//     //Time
+//     hourse: [CastsHourse],
+// }
+// export struct WeatherDetails {
+//     today: ForeCastsData,
+//     tomorrow: ForeCastsData,
+// }
+// export global Weather {
+//     in-out property <WeatherDetails> details;
+// }
