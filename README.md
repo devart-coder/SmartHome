@@ -47,6 +47,7 @@
   Установка **espup** (Обязательно):
     ```bash 
     cargo install espup
+    espup install
     ```
   * Описание установки [`Display`](./Display/README.md)
   * Описание установки [`LightControll`](./LightControll/README.md)
