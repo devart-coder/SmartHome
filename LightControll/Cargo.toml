@@ -9,6 +9,7 @@ name = "GroupOne"
 path = "./src/bin/main.rs"
 
 [dependencies]
+display = { path = "../Display" }
 esp-idf-sys = { version = "0.37.2", features = ["binstart", "native"] }
 esp-idf-svc = {version="0.52.1",features = ["alloc"]}
 esp-idf-hal = "0.46.2"
