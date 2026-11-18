@@ -1,4 +1,3 @@
-use crate::security::LightSubscriptions;
 use crate::ui::GlobalLightControllGroups;
 use esp_idf_svc::mqtt::client::QoS;
 use mqttrs::QoS as OtherQoS;
@@ -23,9 +22,9 @@ macro_rules! to_lcdln {
 macro_rules! sntp {
     ($tz:expr, $timeout_sec:expr, $display:ident, $main_window:ident) => {{
         unsafe {
-                                std::env::set_var("TZ", "MSK-3");
-                                esp_idf_sys::tzset();
-                            }
+            std::env::set_var("TZ", "MSK-3");
+            esp_idf_sys::tzset();
+        }
         if let Ok(sntp) = esp_idf_svc::sntp::EspSntp::new_default() {
             let mut counter = 0;
             while sntp.get_sync_status() != esp_idf_svc::sntp::SyncStatus::Completed {
@@ -56,6 +55,32 @@ macro_rules! ui_global_callback {
     ($ui:expr, $global:ty, $method:ident, $handler:expr) => {
         let ui = $ui.as_weak();
         $ui.unwrap().global::<$global>().$method($handler);
+    };
+}
+#[macro_export]
+macro_rules! subscriptions {
+    ($($variant:ident),* $(,)?) => {
+        #[derive(Debug)]
+        pub enum LightSubscriptions {
+            $($variant),*
+        }
+        impl LightSubscriptions {
+            pub fn name(&self) -> String {
+                match self {
+                    $(
+                        Self::$variant => stringify!($variant).to_lowercase(),
+                    )*
+                }
+            }
+
+            pub fn topic(&self) -> String {
+                format!("smart_home/light_controll/{}", self.name())
+            }
+
+            pub fn topic_with_ownership(&self) -> String {
+                format!("{}/light_ownership", self.topic())
+            }
+        }
     };
 }
 #[macro_export]
@@ -98,46 +123,6 @@ macro_rules! switchers_group_2 {
             });
     };
 }
-// #[macro_export]
-// macro_rules! switchers_group_2 {
-//     ($client_guard:ident, $ui:ident) => {
-//         let manager_guard = $client_guard.clone();
-//         let ui = $ui.as_weak();
-//         ui.unwrap()
-//             .global::<GlobalLightControllGroups>()
-//             .on_g2_status(move |name, status| {
-//                 #[cfg(debug_assertions)]
-//                 {
-//                     info!("Name : {} Status:{}", name, status);
-//                 }
-//                 let manager_guard = manager_guard.lock().unwrap();
-//                 let client_arc = manager_guard.guard_client();
-//                 let mut inner_guard = client_arc.lock().unwrap();
-//                 let c_lock = inner_guard.as_mut().unwrap();
-//                 let topic_name = if name == LightSubscriptions::ControllRoom.name() {
-//                     Some(LightSubscriptions::ControllRoom.topic())
-//                 } else if name == LightSubscriptions::Restroom.name() {
-//                     Some(LightSubscriptions::Restroom.topic())
-//                 } else if name == LightSubscriptions::Bathroom.name() {
-//                     Some(LightSubscriptions::Bathroom.topic())
-//                 } else if name == LightSubscriptions::Breakroom.name() {
-//                     Some(LightSubscriptions::Breakroom.topic())
-//                 } else {
-//                     None
-//                 };
-//                 if let Some(topic) = topic_name {
-//                     c_lock
-//                         .publish(
-//                             topic.as_str(),
-//                             QoS::AtLeastOnce,
-//                             true,
-//                             if status { b"on" } else { b"off" },
-//                         )
-//                         .unwrap();
-//                 };
-//             });
-//     };
-// }
 #[macro_export]
 macro_rules! owners_group_2 {
     ($client_guard:ident, $ui:ident) => {

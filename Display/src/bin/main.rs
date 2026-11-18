@@ -86,7 +86,7 @@ fn main() {
     display.update();
     let _timer = timer_block(ui.as_weak());
     let _ui_timer_bmp = bmp_block(ui.as_weak(), i2c_driver.clone());
-    let _weather = yandex_weather_block(ui.as_weak());
+    // let _weather = yandex_weather_block(ui.as_weak());
     //-------------------------------------------------//
     let mut client = Arc::new(Mutex::new(MqttClientManager::new(
         BROKER_URL,
