@@ -63,7 +63,7 @@
     ```
 
 * Описание установки [`Display`](./Display/README.md)
-  * Описание установки [`LightControll`](./LightControll/README.md)
+* Описание установки [`LightControll`](./LightControll/README.md)
 
 ## Дополнительно:
   ### Демо дизайна главной вкладки дисплея. Сделано с помощью **slint-viewer**:
