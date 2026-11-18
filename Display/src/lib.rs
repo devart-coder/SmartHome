@@ -1,9 +1,11 @@
 pub mod display;
 pub mod macros;
 pub mod mqtt_manager;
-pub mod security;
 pub mod wifi;
 pub mod yandex_weather;
+pub mod security {
+    include!(concat!(env!("OUT_DIR"), "/security.rs"));
+}
 
 use esp_idf_svc::mqtt::client::QoS;
 // use mqttrs::QoS;

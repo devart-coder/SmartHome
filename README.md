@@ -26,8 +26,11 @@
     - Настроить корректную обработку подключения с ограничением по количеству подключаемых пользователей до константного значения.
 ## Компоненты:
   - Waveshare ESP32-S3-ETH-8DI-RO- 8ми релейная плата управления (2 штук),
+    ![Waveshare ESP32-S3-ETH-8DI-RO](image_1.png)
   - Waveshare ESP32-S3 7'- 7ми дюймовый емкостный сенсорный дисплей с разрешением 800×480 пикселей.
+    ![Waveshare ESP32-S3 7'](image_2.png)
   - Waveshare ESP32-S3 4'- 4x дюймовый емкостный сенсорный дисплей с разрешением 480x480 пикселей.
+    ![Waveshare ESP32-S3 4'](image_3.png)
 ### Используемые модули:
   - BMP180 - датчик температуры, давления, уровня моря. 
 
@@ -37,7 +40,7 @@
   SmartHome/
     ├── Display/          # модуль, отвечающий за визуальную часть проекта.
     ├── LightControll/    # модуль, отвечающий за физическое управление освещением помещения.
-    ├── Cargo.toml         # Файл с настройками Cargo проекта SmartHome
+    ├── Cargo.toml        # Файл с настройками Cargo проекта SmartHome
     ├── LICENCE
     └── README.md
   ```
@@ -49,7 +52,17 @@
     cargo install espup
     espup install
     ```
-  * Описание установки [`Display`](./Display/README.md)
+  * Сборка всего проекта:
+    * **Debug-сборка:**
+    ```bash
+    cargo build --workspace
+    ```
+    * **Release-сборка:**
+    ```bash
+    cargo build --workspace --release
+    ```
+
+* Описание установки [`Display`](./Display/README.md)
   * Описание установки [`LightControll`](./LightControll/README.md)
 
 ## Дополнительно:

@@ -3,20 +3,6 @@
 version = 4
 
 [[package]]
-name = "GroupOne"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "embuild",
- "esp-idf-hal",
- "esp-idf-svc",
- "esp-idf-sys 0.37.2",
- "esp_idf_logger",
- "log",
- "mqttrs",
-]
-
-[[package]]
 name = "adler2"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -972,6 +958,28 @@ checksum = "1e0e367e4e7da84520dedcac1901e4da967309406d1e51017ae1abfb97adbd38"
 dependencies = [
  "bitflags 2.13.2",
  "objc2 0.6.5",
+]
+
+[[package]]
+name = "display"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bmp180-driver",
+ "chrono",
+ "critical-section",
+ "embedded-graphics",
+ "embedded-graphics-framebuf",
+ "embuild",
+ "esp-idf-hal",
+ "esp-idf-svc",
+ "esp-idf-sys 0.37.2",
+ "esp_idf_logger",
+ "log",
+ "mqttrs",
+ "slint",
+ "slint-build",
+ "tinyjson",
 ]
 
 [[package]]
@@ -2782,6 +2790,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "light_group_1"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "display",
+ "embuild",
+ "esp-idf-hal",
+ "esp-idf-svc",
+ "esp-idf-sys 0.37.2",
+ "esp_idf_logger",
+ "log",
+ "mqttrs",
+]
+
+[[package]]
 name = "linebender_resource_handle"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2871,28 +2894,6 @@ checksum = "5c463f9c428b7fc5ec885dcd39ce4aa61e29111d0e33483f6f98c74e89d8621e"
 dependencies = [
  "lyon_geom",
  "num-traits",
-]
-
-[[package]]
-name = "master_display"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bmp180-driver",
- "chrono",
- "critical-section",
- "embedded-graphics",
- "embedded-graphics-framebuf",
- "embuild",
- "esp-idf-hal",
- "esp-idf-svc",
- "esp-idf-sys 0.37.2",
- "esp_idf_logger",
- "log",
- "mqttrs",
- "slint",
- "slint-build",
- "tinyjson",
 ]
 
 [[package]]

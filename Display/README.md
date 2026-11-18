@@ -16,6 +16,7 @@ Display/
 │   ├── wifi.rs              # Модуль подключения и работы с Wi-Fi
 │   ├── yandex_weather.rs    # Интеграция с сервисом «Яндекс Погода»
 │   └── mqtt_manager.rs      # Модуль работы с MQTT-клиентом
+│   └── protected.rs         # Модуль работы c защищенной информацией
 ├── ui/                      # Компоненты пользовательского интерфейса (Slint)
 │   ├── global/              # Глобальные переменные и состояния UI
 │   ├── icons/               # Иконки интерфейса
@@ -46,55 +47,18 @@ cargo install slint-viewer
 slint-viewer ui/main_window.slint
 ```
 
-### 3. Настройка констант и перечислений для запуска проекта:
+### 2. Настройка констант и перечислений для запуска проекта:
 
-* **Создайте файл security.rs. Добавить код из примера и актуализировать информацию для своего проекта:**:
-  **Пример:**
+* **Изменить файл protected.rs в соответствии с условиями своего проекта:**
+  - Пометка: 
   ```text
-  //URL брокера
-  pub const BROKER_URL: &str = "";
-  //Логин wifi сети
-  pub const SDDI: &str = "";
-  //Пароль wifi сети
-  pub const PASSWORD: &str = "";
-
-  pub enum LightSubscriptions {
-      //Добавьте собственные перечисления или раскомментируйте описание ниже
-      //ControllRoom,
-      //Restroom,
-      //Bathroom,
-      //Breakroom,
-  }
-  impl LightSubscriptions {
-      pub fn name(&self) -> &'static str {
-          match self {
-            //Добавьте собственную реализацию или раскомментируйте описание ниже
-            //Self::ControllRoom => "controllroom",
-            //Self::Restroom => "restroom",
-            //Self::Bathroom => "bathroom",
-            //Self::Breakroom => "breakroom",
-          }
-      }
-      pub fn topic(&self) -> String {
-          //Добавьте собственную реализацию или раскомментируйте описание ниже
-          //match self {
-          //    _ => format!("свой/полный/путь/топика/{}", self.name()),
-          //}
-          //После реализации закомменируйте или удалите код ниже
-          #[cfg(not(rust_analyzer))]
-          compile_error!("Необходимо реализовать метод topic в файле security.rs");
-          unreachable!()
-      }
-      pub fn topic_with_ownership(&self) -> String {
-          //Добавьте собственную реализацию или раскомментируйте описание ниже
-          //format!("{}/light_ownership", self.topic())
-          //После реализации закомменируйте или удалите код ниже
-          #[cfg(not(rust_analyzer))]
-          compile_error!("Необходимо реализовать метод topic_with_ownership в файле security.rs");
-          unreachable!()
-      }
-  }
+    В 'BROKER_URL' прописать url своего mqtt брокера. 
+    В 'SDDI' прописать логин wifi сети.
+    В 'PASSWORD' прописать пароль wifi сети;
+    'subscriptions!' - макрос, в котором необходимо прописать наименования перечислений контроля освещений. 
   ```
+   - Подробнее о макросе [`subscriptions`](./src/macros.rs)
+
 
 ### 3. Сборка проекта
 

@@ -6,18 +6,18 @@ use std::{
     time::Duration,
 };
 
-use GroupOne::{
-    mqtt_handler::Handler,
-    relay::Relay,
-    security::{PASSWORD, SDDI},
-    wifi::Wifi,
-};
 use esp_idf_hal::{
     gpio::PinDriver,
     i2c::{I2cConfig, I2cDriver},
     peripherals::Peripherals,
 };
 use esp_idf_svc::{log::EspLogger, wifi::AuthMethod};
+use light_group_1::{
+    mqtt_handler::Handler,
+    relay::Relay,
+    security::{PASSWORD, SDDI},
+    wifi::Wifi,
+};
 use log::info;
 
 fn main() -> anyhow::Result<()> {

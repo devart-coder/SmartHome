@@ -1,6 +1,6 @@
 [package]
 edition      = "2024"
-name         = "GroupOne"
+name         = "light_group_1"
 rust-version = "1.88"
 version      = "0.1.0"
 
